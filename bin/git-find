@@ -201,7 +201,13 @@ sub doTheFancyThing {
     } while ($hasStdout || $hasStderr);
     print STDOUT $buf1->finish();
     print STDERR $buf2->finish();
-    return waitpid($pid, 0);
+    my $retval = waitpid($pid, 0);
+    my ($exit, $sig, $dump, $errno) = exit_status();
+    if ($exit || $sig || $dump || $errno) {
+        $exitCode = 1;
+        push(@failures, { name => $name });
+    }
+    return $retval;
 }
 
 sub msg {
