@@ -289,12 +289,3 @@ package My::LineBuf {
         return $data;
     }
 }
-
-# select waits until one of the fds is ready for reading or writing
-# without blocking.
-
-# use poll or epoll to monitor fds >= FD_SETSIZE.
-
-# select may update the timeout argument; pselect will not.
-
-# pselect has a sigmask argument.
