@@ -88,35 +88,6 @@ sub wanted {
     }
 }
 
-sub doTheThing {
-    my ($dir, $name) = @_;
-    my $kid = doTheFancyThing($dir, $name);
-    if ($kid == -1) {
-        return;
-    }
-    my ($exit, $sig, $dump, $errno, $errid, $errmsg) = exit_status();
-    if ($exit || $sig || $dump || $errno) {
-        $exitCode = 1;
-        push(@failedNames, $name);
-    }
-}
-
-sub doTheNormalThing {
-    my ($dir, $name) = @_;
-    print(msg("==> $name <=="), "\n");
-    my $pid = fork();
-    die("$!") if !defined $pid;
-    if (!$pid) {                # child
-        chdir($dir) or die("chdir: $!");
-        my @cmd = (
-            ($noGit ? () : ('git', '--no-pager')),
-            @gitCommand,
-        );
-        exec(@cmd) or die("exec failed: $!");
-    }
-    return waitpid($pid, 0);
-}
-
 use Fcntl qw(F_GETFL F_SETFL O_NONBLOCK);
 use constant LINEBUF => 1;
 
