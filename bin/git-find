@@ -24,7 +24,7 @@ our $progress;
 our @gitCommand;
 our @exclude;
 our $exitCode = 0;
-our @failedNames;
+our @failures;
 our $quiet;
 our $width;
 
@@ -64,9 +64,11 @@ sub main {
     }
 
     find(\&wanted, @findArguments);
-    if (scalar @failedNames) {
+    if (scalar @failures) {
         warn("The following repositories had issues:\n");
-        warn("    $_\n") foreach @failedNames;
+        foreach my $failure (@failures) {
+            printf STDERR ("    %s\n", $failure->{name});
+        }
     }
     exit($exitCode);
 }
@@ -163,7 +165,7 @@ sub doTheFancyThing {
                     my ($exit, $sig, $dump, $errno) = exit_status();
                     if ($exit || $sig || $dump || $errno) {
                         $exitCode = 1;
-                        push(@failedNames, $name);
+                        push(@failures, { name => $name });
                     }
                 }
                 $hasStdout = 0;
@@ -186,7 +188,7 @@ sub doTheFancyThing {
                     my ($exit, $sig, $dump, $errno) = exit_status();
                     if ($exit || $sig || $dump || $errno) {
                         $exitCode = 1;
-                        push(@failedNames, $name);
+                        push(@failures, { name => $name });
                     }
                 }
                 $hasStderr = 0;
