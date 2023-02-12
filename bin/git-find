@@ -68,6 +68,13 @@ sub main {
         warn("The following repositories had issues:\n");
         foreach my $failure (@failures) {
             printf STDERR ("    %s\n", $failure->{name});
+            my $stderr = $failure->{stderr};
+            if ($stderr =~ m{\S}) {
+                $stderr =~ s{\R\s*\z}{};
+                $stderr .= "\n" if $stderr ne '';
+                $stderr =~ s{^}{    >   }gm;
+                printf STDERR $stderr;
+            }
         }
     }
     exit($exitCode);
@@ -95,6 +102,9 @@ use constant LINEBUF => 1;
 
 sub doTheFancyThing {
     my ($dir, $name) = @_;
+    my $stderr = '';
+    my $failed;
+    my $failStatus;
     my $inlinePrefixStdout = $inline ? msg("[$name]", -t 1) . " " : '';
     my $inlinePrefixStderr = $inline ? msg("[$name]", -t 2) . " " : '';
     if ($width && $inline) {
@@ -164,8 +174,7 @@ sub doTheFancyThing {
                 if (!close($stdoutRead)) {
                     my ($exit, $sig, $dump, $errno) = exit_status();
                     if ($exit || $sig || $dump || $errno) {
-                        $exitCode = 1;
-                        push(@failures, { name => $name });
+                        $failed = 1;
                     }
                 }
                 $hasStdout = 0;
@@ -187,8 +196,7 @@ sub doTheFancyThing {
                 if (!close($stderrRead)) {
                     my ($exit, $sig, $dump, $errno) = exit_status();
                     if ($exit || $sig || $dump || $errno) {
-                        $exitCode = 1;
-                        push(@failures, { name => $name });
+                        $failed = 1;
                     }
                 }
                 $hasStderr = 0;
@@ -197,6 +205,7 @@ sub doTheFancyThing {
             }
             print(msg("==> $name <<="), "\n") if $quiet && !$printed++;
             print STDERR $buf2->feed($data);
+            $stderr .= $data;
         }
     } while ($hasStdout || $hasStderr);
     print STDOUT $buf1->finish();
@@ -204,8 +213,11 @@ sub doTheFancyThing {
     my $retval = waitpid($pid, 0);
     my ($exit, $sig, $dump, $errno) = exit_status();
     if ($exit || $sig || $dump || $errno) {
+        $failed = 1;
+    }
+    if ($failed) {
         $exitCode = 1;
-        push(@failures, { name => $name });
+        push(@failures, { name => $name, stderr => $stderr });
     }
     return $retval;
 }
