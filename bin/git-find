@@ -30,6 +30,9 @@ our $width;
 
 our $TTY;
 open($TTY, '>', '/dev/tty') or undef $TTY;
+if (defined $TTY) {
+    $TTY->autoflush(1);
+}
 
 main();
 
@@ -64,6 +67,9 @@ sub main {
     }
 
     find(\&wanted, @findArguments);
+
+    print $TTY ("\r\e[K") if $quiet && defined $TTY;
+
     if (scalar @failures) {
         warn("The following repositories had issues:\n");
         foreach my $failure (@failures) {
@@ -113,8 +119,12 @@ sub doTheFancyThing {
         $inlinePrefixStdout .= $pad;
         $inlinePrefixStderr .= $pad;
     }
-    if (!$quiet && !$inline) {
-        print(msg("==> $name <=="), "\n");
+    if (!$inline) {
+        if (!$quiet) {
+            print(msg("==> $name <=="), "\n");
+        } else {
+            print $TTY ("\r" . colored(["green"], "$name ..."), "\e[K") if defined $TTY;
+        }
     }
     my ($stdoutRead, $stdoutWrite, $stderrRead, $stderrWrite);
     pipe($stdoutRead, $stdoutWrite) or die("pipe: $!");
@@ -181,7 +191,10 @@ sub doTheFancyThing {
                 $select->remove($stdoutRead);
                 last;
             }
-            print(msg("==> $name <<="), "\n") if $quiet && !$printed++;
+            if ($quiet && !$printed++) {
+                print $TTY ("\r\e[K") if defined $TTY;
+                print(msg("==> $name <=="), "\n");
+            }
             print STDOUT $buf1->feed($data);
         }
         while ($hasStderr) {
@@ -203,7 +216,10 @@ sub doTheFancyThing {
                 $select->remove($stderrRead);
                 last;
             }
-            print(msg("==> $name <<="), "\n") if $quiet && !$printed++;
+            if ($quiet && !$printed++) {
+                print $TTY ("\r\e[K") if defined $TTY;
+                print(msg("==> $name <=="), "\n");
+            }
             print STDERR $buf2->feed($data);
             $stderr .= $data;
         }
