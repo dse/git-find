@@ -34,6 +34,11 @@ if (defined $TTY) {
     $TTY->autoflush(1);
 }
 
+our $COLS = 0 + `tput cols`;
+if (!$COLS) {
+    undef $COLS;
+}
+
 main();
 
 sub main {
@@ -123,7 +128,11 @@ sub doTheFancyThing {
         if (!$quiet) {
             print(msg("==> $name <=="), "\n");
         } else {
-            print $TTY ("\r" . colored(["green"], "$name ..."), "\e[K") if defined $TTY;
+            my $msg = "$name ...";
+            if (length($msg) > ($COLS - 1)) {
+                $msg = '... ' . substr($name, -($COLS - 5));
+            }
+            print $TTY ("\r" . colored(["green"], $msg), "\e[K") if defined $TTY;
         }
     }
     my ($stdoutRead, $stdoutWrite, $stderrRead, $stderrWrite);
