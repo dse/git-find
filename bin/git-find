@@ -144,7 +144,7 @@ sub wanted {
     }
 }
 
-use constant DEBUG_INCLUDE_EXCLUDE => 1;
+use constant DEBUG_INCLUDE_EXCLUDE => 0;
 
 sub include_filename {
     my ($filename, @pattern) = @_;
