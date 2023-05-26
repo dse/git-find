@@ -10,6 +10,7 @@ use Fcntl;
 use Term::ANSIColor;
 use IO::Select;
 use Scalar::Util qw(refaddr);
+use List::Util qw(all any);
 
 our $verbose = 0;
 our $noGit;
@@ -27,6 +28,8 @@ our $exitCode = 0;
 our @failures;
 our $quiet;
 our $width;
+our @include;
+our $follow;
 
 our $TTY;
 open($TTY, '>', '/dev/tty') or undef $TTY;
@@ -45,7 +48,23 @@ sub main {
     use Getopt::Long;
     Getopt::Long::Configure('bundling', 'gnu_compat', 'no_ignore_case', 'no_permute');
     Getopt::Long::GetOptions(
-        'x|exclude=s' => \@exclude,
+        'include=s' => sub {
+            if ($_[1] =~ m{^/(.*)/$}) {
+                my $regexp = qr{\Q$1\E};
+                push(@include, $regexp);
+            } else {
+                push(@include, $_[1]);
+            }
+        },
+        'exclude=s' => sub {
+            if ($_[1] =~ m{^/(.*)/$}) {
+                my $regexp = qr{\Q$1\E};
+                push(@exclude, $regexp);
+            } else {
+                push(@exclude, $_[1]);
+            }
+        },
+        'follow'      => \$follow,
         'G|no-git'    => \$noGit,
         'l|list'      => \$list,
         'v|verbose+'  => \$verbose,
@@ -71,7 +90,7 @@ sub main {
         @findArguments = ('.');
     }
 
-    find(\&wanted, @findArguments);
+    find({ follow_skip => $follow, wanted => \&wanted }, @findArguments);
 
     print $TTY ("\r\e[K") if $quiet && defined $TTY;
 
@@ -92,12 +111,29 @@ sub main {
 }
 
 sub wanted {
-    my @lstat = lstat($_);
-    return if !scalar(@lstat);
-    return unless -d _;
+    my @stat = lstat($_);
+    return if !scalar(@stat);
+    if (-l _) {                 # if symlink
+        @stat = stat($_);       # symlink target
+    }
+    return unless -d _;         # if symlink then symlink target
     my $filename = $_;
-    return if scalar @exclude && grep { $filename eq $_ } @exclude;
+    # return if scalar @exclude && grep { $filename eq $_ } @exclude;
     return $File::Find::prune = 1 if $_ eq 'node_modules';
+
+    if (scalar @exclude) {
+        my $excluded = exclude_filename($File::Find::name, @exclude);
+        if ($excluded) {
+            return $File::Find::prune = 1;
+        }
+    }
+    if (scalar @include) {
+        my $included = include_filename($File::Find::name, @include);
+        if (!$included) {
+            return $File::Find::prune = 1;
+        }
+    }
+
     if (-d "$_/.git") {
         if ($list) {
             print($File::Find::name, "\n");
@@ -106,6 +142,52 @@ sub wanted {
         }
         return $File::Find::prune = 1;
     }
+}
+
+use constant DEBUG_INCLUDE_EXCLUDE => 1;
+
+sub include_filename {
+    my ($filename, @pattern) = @_;
+    warn("include_filename @_\n") if DEBUG_INCLUDE_EXCLUDE;
+    if (!scalar @pattern) {
+        warn("    no includes specified; including\n") if DEBUG_INCLUDE_EXCLUDE;
+        return 1;
+    }
+    foreach my $pattern (@pattern) {
+        if (filename_matches_pattern($filename, $pattern)) {
+            warn("    filename matches $pattern; including\n") if DEBUG_INCLUDE_EXCLUDE;
+            return 1;
+        }
+        warn("    filename does not match $pattern\n") if DEBUG_INCLUDE_EXCLUDE;
+    }
+    warn("    filename does not match any patterns; not including\n") if DEBUG_INCLUDE_EXCLUDE;
+    return 0;
+}
+
+sub exclude_filename {
+    my ($filename, @pattern) = @_;
+    warn("exclude_filename @_\n") if DEBUG_INCLUDE_EXCLUDE;
+    if (!scalar @pattern) {
+        warn("    no excludes specified; not excluding\n") if DEBUG_INCLUDE_EXCLUDE;
+        return 0;
+    }
+    foreach my $pattern (@pattern) {
+        if (filename_matches_pattern($filename, $pattern)) {
+            warn("    filename matches $pattern; excluding\n") if DEBUG_INCLUDE_EXCLUDE;
+            return 1;
+        }
+        warn("    filename does not match $pattern\n") if DEBUG_INCLUDE_EXCLUDE;
+    }
+    warn("    filename does not match any patterns; not excluding\n") if DEBUG_INCLUDE_EXCLUDE;
+    return 0;
+}
+
+sub filename_matches_pattern {
+    my ($filename, $pattern) = @_;
+    if (ref $pattern eq 'Regexp') {
+        return $filename =~ $pattern;
+    }
+    return $filename eq $pattern;
 }
 
 use Fcntl qw(F_GETFL F_SETFL O_NONBLOCK);
