@@ -24,6 +24,9 @@ main () {
     declare -a find_expr=()
     declare -a includes=()
     declare -a excludes=()
+    color=auto
+    COLOR_ON=''
+    COLOR_OFF=''
 
     get_options      "$@"; shift $optshift
     get_find_options "$@"; shift $optshift
@@ -31,6 +34,17 @@ main () {
     get_find_options "$@"; shift $optshift
     get_find_targets "$@"; shift $optshift
     get_find_expr    "$@"; shift $optshift
+
+    case "${color}" in
+        never) COLOR_ON=''; COLOR_OFF='';;
+        auto)
+            if [[ -t 1 ]] ; then
+                COLOR_ON=$'\e[32m'; COLOR_OFF=$'\e[0m'
+            fi;;
+        always)
+            COLOR_ON=$'\e[32m'; COLOR_OFF=$'\e[0m'
+            ;;
+    esac
 
     if (( ! ${#find_targets[@]} )) ; then
         find_targets+=(.)
@@ -45,7 +59,7 @@ main () {
                 git --no-pager -C {} "${git_cmd[@]}"
             )
         fi
-        git_find_expr=(-printf "==> %p <==\\n" -exec "${git_cmd[@]}" \;)
+        git_find_expr=(-printf "${COLOR_ON}==> %p <==${COLOR_OFF}\\n" -exec "${git_cmd[@]}" \;)
     fi
 
     if (( ${#includes[@]} )) ; then
@@ -59,14 +73,14 @@ main () {
         )
     fi
 
-    echo "find options ${find_options[@]}" >&2
-    echo "find targets ${find_targets[@]}" >&2
-    echo "find expr ${find_expr[@]}" >&2
-    echo "git command ${git_command[@]}" >&2
-    echo "includes ${includes[@]}" >&2
-    echo "excludes ${excludes[@]}" >&2
+    # echo "find options ${find_options[@]}" >&2
+    # echo "find targets ${find_targets[@]}" >&2
+    # echo "find expr ${find_expr[@]}" >&2
+    # echo "git command ${git_command[@]}" >&2
+    # echo "includes ${includes[@]}" >&2
+    # echo "excludes ${excludes[@]}" >&2
 
-    echo exec find "${find_targets[@]}" -type d \
+    exec find "${find_targets[@]}" -type d \
          "${excludes[@]}" \
          \! \( \( -name node_modules -o -name .git \) -prune \) \
          "${includes[@]}" \
@@ -137,22 +151,30 @@ get_options () {
     optshift=0
     while (( $# )) ; do
         case "$1" in
+            --color)
+                color=always; optshift+=1; shift;;
+            --color=never)
+                color=never; optshift+=1; shift;;
+            --color=auto)
+                color=auto; optshift+=1; shift;;
+            --color=always)
+                color=always; optshift+=1; shift;;
             --include)
                 if (( $# < 2 )) ; then
-                    echo "option $1 requires an argument"; exit 1
+                    echo "option $1 requires an argument" >&2; exit 1
                 fi
-                include "$2"; optshift+=2; shift;;
+                include "$2"; optshift+=2; shift 2;;
             --exclude)
                 if (( $# < 2 )) ; then
-                    echo "option $1 requires an argument"; exit 1
+                    echo "option $1 requires an argument" >&2; exit 1
                 fi
-                exclude "$2"; optshift+=2; shift;;
+                exclude "$2"; optshift+=2; shift 2;;
             --include=*)
                 include "${1#*=}"; optshift+=1; shift;;
             --exclude=*)
                 exclude "${1#*=}"; optshift+=1; shift;;
             --*)
-                echo "illegal option -- $1"; exit 1;;
+                echo "illegal option -- $1" >&2; exit 1;;
             *)
                 break;;
         esac
@@ -161,9 +183,14 @@ get_options () {
 
 usage () { cat <<EOF; }
 git find [OPTIONS] [FIND_OPTIONS] [CMD ...]
-git find [OPTIONS] [FIND_OPTIONS] [CMD ...] \;\; [FIND_OPTIONS] [DIR ...] [FIND_EXPR ...]
-FIND_OPTIONS and FIND_EXPR are the same as in find(1).
-CMD does not include "git" automatically; you must specify it.
+git find [OPTIONS] [FIND_OPTIONS] [CMD ...] \;\;
+         [FIND_OPTIONS] [DIR ...] [FIND_EXPR ...]
+    FIND_OPTIONS and FIND_EXPR are the same as in find(1).
+    CMD does not include "git" automatically; you must specify it.
+OPTIONS: (these must come before the FIND_OPTIONS)
+    --include=WILDCARD
+    --exclude=WILDCARD
+    --color[=auto|=always|=never]
 EOF
 
 #------------------------------------------------------------------------------
