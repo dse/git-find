@@ -8,7 +8,6 @@ shopt -s lastpipe
 # git-find.sh git remote -v     executes a git (or other) cmd in each repos
 
 # --follow
-# --list
 # --inline
 # --quiet
 # --width=NUMBER
@@ -27,6 +26,7 @@ main () {
     color=auto
     COLOR_ON=''
     COLOR_OFF=''
+    dry_run=0
 
     get_options      "$@"; shift $optshift
     get_find_options "$@"; shift $optshift
@@ -56,7 +56,11 @@ main () {
         if [[ "${git_cmd[0]}" = "git" ]] ; then
             unset git_cmd[0]
             git_cmd=(
-                git --no-pager -C {} "${git_cmd[@]}"
+                env -C '{}' git --no-pager "${git_cmd[@]}"
+            )
+        else
+            git_cmd=(
+                env -C '{}' "${git_cmd[@]}"
             )
         fi
         git_find_expr=(-printf "${COLOR_ON}==> %p <==${COLOR_OFF}\\n" -exec "${git_cmd[@]}" \;)
@@ -73,20 +77,26 @@ main () {
         )
     fi
 
-    # echo "find options ${find_options[@]}" >&2
-    # echo "find targets ${find_targets[@]}" >&2
-    # echo "find expr ${find_expr[@]}" >&2
-    # echo "git command ${git_command[@]}" >&2
-    # echo "includes ${includes[@]}" >&2
-    # echo "excludes ${excludes[@]}" >&2
+    if (( dry_run )) ; then
+        echo "find options = ${find_options[@]}" >&2
+        echo "find targets = ${find_targets[@]}" >&2
+        echo "find expr    = ${find_expr[@]}" >&2
+        echo "git command  = ${git_command[@]}" >&2
+        echo "includes     = ${includes[@]}" >&2
+        echo "excludes     = ${excludes[@]}" >&2
+    fi
 
-    exec find "${find_targets[@]}" -type d \
-         "${excludes[@]}" \
-         \! \( \( -name node_modules -o -name .git \) -prune \) \
-         "${includes[@]}" \
-         -exec test -d {}/.git \; \
-         -prune \
-         "${git_find_expr[@]}"
+    # runs "echo exec ..." if dry run, otherwise runs "exec ..."
+    $( (( dry_run )) && echo echo ) \
+        exec find "${find_options[@]}" "${find_targets[@]}" -type d \
+        \! \( \( -name node_modules -o -name .git \) -prune \) \
+        \! \( -name vendor -exec test -f '{}/../composer.json' \; -prune \) \
+        -fprintf /dev/stderr "%p\033[K\015" \
+        "${excludes[@]}" \
+        "${includes[@]}" \
+        -exec test -d '{}/.git' \; \
+        -prune \
+        "${git_find_expr[@]}"
 }
 
 include () {
@@ -151,6 +161,8 @@ get_options () {
     optshift=0
     while (( $# )) ; do
         case "$1" in
+            --dry-run)
+                dry_run=1; optshift+=1; shift;;
             --color)
                 color=always; optshift+=1; shift;;
             --color=never)
@@ -191,6 +203,7 @@ OPTIONS: (these must come before the FIND_OPTIONS)
     --include=WILDCARD
     --exclude=WILDCARD
     --color[=auto|=always|=never]
+    --dry-run
 EOF
 
 #------------------------------------------------------------------------------
