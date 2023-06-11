@@ -86,12 +86,20 @@ main () {
         echo "excludes     = ${excludes[@]}" >&2
     fi
 
+    declare -a progress=(
+    )
+    if [[ -t 1 ]] && [[ -t 2 ]] ; then
+        progress=(
+            -fprintf /dev/stderr "%p\033[K\015"
+        )
+    fi
+
     # runs "echo exec ..." if dry run, otherwise runs "exec ..."
     $( (( dry_run )) && echo echo ) \
         exec find "${find_options[@]}" "${find_targets[@]}" -type d \
         \! \( \( -name node_modules -o -name .git \) -prune \) \
         \! \( -name vendor -exec test -f '{}/../composer.json' \; -prune \) \
-        -fprintf /dev/stderr "%p\033[K\015" \
+        "${progress[@]}" \
         "${excludes[@]}" \
         "${includes[@]}" \
         -exec test -d '{}/.git' \; \
@@ -190,14 +198,10 @@ get_options () {
                 color=always; optshift+=1; shift;;
 
             --include)
-                if (( $# < 2 )) ; then
-                    echo "option $1 requires an argument" >&2; exit 1
-                fi
+                if (( $# < 2 )) ; then echo "option $1 requires an argument" >&2; exit 1; fi
                 include "$2"; optshift+=2; shift 2;;
             --exclude)
-                if (( $# < 2 )) ; then
-                    echo "option $1 requires an argument" >&2; exit 1
-                fi
+                if (( $# < 2 )) ; then echo "option $1 requires an argument" >&2; exit 1; fi
                 exclude "$2"; optshift+=2; shift 2;;
             --include=*)
                 include "${1#*=}"; optshift+=1; shift;;
