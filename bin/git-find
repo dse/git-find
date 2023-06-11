@@ -218,8 +218,8 @@ get_options () {
 
 usage () { cat <<EOF; }
 git find [OPTIONS] [FIND_OPTIONS] [CMD ...]
-git find [OPTIONS] [FIND_OPTIONS] [CMD ...] \;\;
-         [FIND_OPTIONS] [DIR ...] [FIND_EXPR ...]
+git find [OPTIONS] [FIND_OPTIONS] [CMD ...] \;\; [FIND_OPTIONS] [DIR ...]
+                                                                [FIND_EXPR ...]
     FIND_OPTIONS and FIND_EXPR are the same as in find(1).
     CMD does not include "git" automatically; you must specify it.
 OPTIONS: (these must come before the FIND_OPTIONS)
