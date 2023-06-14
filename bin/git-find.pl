@@ -20,7 +20,7 @@ our $minDepth;
 our $maxDepth;
 our $pipe;
 our $progress;
-our @gitCommand;
+our @command;
 our @exclude;
 our $exitCode = 0;
 our @failures;
@@ -75,9 +75,9 @@ sub main {
     while (scalar @ARGV) {
         my $arg = shift(@ARGV);
         last if ($arg eq '---');
-        push(@gitCommand, $arg);
+        push(@command, $arg);
     }
-    if (!scalar @gitCommand) {
+    if (!scalar @command) {
         $list = 1;
     }
 
@@ -215,9 +215,9 @@ sub runCmd {
     my ($stdoutRead, $stdoutWrite, $stderrRead, $stderrWrite);
     pipe($stdoutRead, $stdoutWrite) or die("pipe: $!");
     pipe($stderrRead, $stderrWrite) or die("pipe: $!");
-    if (scalar @gitCommand) {
-        if ($gitCommand[0] eq 'git') {
-            splice(@gitCommand, 1, 0, '--no-pager');
+    if (scalar @command) {
+        if ($command[0] eq 'git') {
+            splice(@command, 1, 0, '--no-pager');
         }
     }
     my $pid = fork() // die("fork: $!");
@@ -228,7 +228,7 @@ sub runCmd {
         open(STDERR, '>&', $stderrWrite) or die("reopen: $!");
         binmode($stdoutWrite);  # on account of we're doing sysreads
         binmode($stderrWrite);  # ditto
-        exec(@gitCommand) or die("exec failed: $!");
+        exec(@command) or die("exec failed: $!");
     }
     binmode($stdoutRead);       # on account of we're doing sysreads
     binmode($stderrRead);       # ditto
