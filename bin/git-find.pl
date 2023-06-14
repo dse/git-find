@@ -23,8 +23,9 @@ our $width;
 our @include;
 our $follow;
 our $quiet = 0;
+our $inline = 0;
 
-Getopt::Long::Configure('bundling', 'gnu_compat', 'no_ignore_case', 'no_permute');
+Getopt::Long::Configure('gnu_getopt', 'no_permute');
 Getopt::Long::GetOptions(
     'include=s' => sub {
         if ($_[1] =~ m{^/(.*)/$}) {
@@ -42,10 +43,11 @@ Getopt::Long::GetOptions(
             push(@exclude, $_[1]);
         }
     },
-    'follow'      => \$follow,
-    'l|list'      => \$list,
-    'w|width=i'   => \$width,
-    'q|quiet+'    => \$quiet,
+    'follow' => \$follow,
+    'l|list' => \$list,
+    'w|width=i' => \$width,
+    'q|quiet+' => \$quiet,
+    'i|inline+' => \$inline,
 ) or die();
 
 while (scalar @ARGV) {
@@ -126,18 +128,10 @@ sub filename_matches_pattern {
     return $filename eq $pattern;
 }
 
-sub print_header {
-    my ($name) = @_;
-    if (-t 1) {
-        print(colored(['green'], sprintf("==> %s <==", $name)) . "\n");
-    } else {
-        printf("==> %s <==\n", $name);
-    }
-}
-
 sub run_cmd {
     my ($dir, $name) = @_;
-    print_header($name) unless $quiet;
+    my $printed_header = 0;
+    print_header($name, -t 1) if !$quiet && !$inline && !$printed_header++;
     my ($stdoutRead, $stdoutWrite, $stderrRead, $stderrWrite);
     pipe($stdoutRead, $stdoutWrite) or die("pipe: $!");
     pipe($stderrRead, $stderrWrite) or die("pipe: $!");
@@ -162,7 +156,6 @@ sub run_cmd {
     my $has_stderr;
     my $buf1 = '';
     my $buf2 = '';
-    my $has_output = 0;          # print "==> %s <==" once
     my $stderr = '';            # store for printing errors atexit
     my $failed;
     do {
@@ -187,9 +180,8 @@ sub run_cmd {
             }
             $buf1 .= $data;
             if ($buf1 =~ s{^.*\R}{}s) {
-                print_header($name) if $quiet && !$has_output;
-                $has_output = 1;
-                print STDOUT $&;
+                print_header($name, -t 1) if $quiet == 1 && !$inline && !$printed_header++;
+                print STDOUT prefixed($&, $name, -t 1);
             }
         }
         while ($has_stderr) {
@@ -209,25 +201,51 @@ sub run_cmd {
             }
             $buf2 .= $data;
             if ($buf2 =~ s{^.*\R}{}s) {
-                print_header($name) if $quiet && !$has_output;
-                $has_output = 1;
-                print STDERR $&;
+                print_header($name, -t 1) if $quiet == 1 && !$inline && !$printed_header++;
+                print STDERR prefixed($&, $name, -t 2);
             }
             $stderr .= $data;
         }
     } while ($has_stdout || $has_stderr);
     if ($buf1 ne '' || $buf2 ne '') {
-        print_header($name) if $quiet && !$has_output;
-        $has_output = 1;
+        print_header($name, -t 1) if $quiet == 1 && !$inline && !$printed_header++;
+        if ($buf1 ne '') {
+            $buf1 .= "\n" if $buf1 !~ m{\R\z}; # make sure output ends with newline
+            print STDOUT prefixed($buf1, $name, -t 1);
+        }
+        if ($buf2 ne '') {
+            $buf2 .= "\n" if $buf2 !~ m{\R\z};
+            print STDERR prefixed($buf1, $name, -t 2);
+        }
     }
-    print STDOUT $buf1;
-    print STDERR $buf2;
     my $exited_pid = waitpid($pid, 0);
     $failed = 1 if $exited_pid < 0 || $? || (0 + $!);
     if ($failed) {
         $exit_code = 1;
         push(@failures, { name => $name, stderr => $stderr });
     }
+}
+
+sub inline_prefix {
+    my ($name, $is_tty) = @_;
+    my $prefix = sprintf('[%s] ', $name);
+    $prefix = sprintf("%-*s", $width, $prefix) if $width;
+    $prefix = colored(['green'], $prefix) if $is_tty;
+}
+
+sub prefixed {
+    my ($str, $name, $is_tty) = @_;
+    return $str if !$inline;
+    my $prefix = inline_prefix($name, $is_tty);
+    $str =~ s{^(?=.)}{$prefix}gm;
+    return $str;
+}
+
+sub print_header {
+    my ($name, $is_tty) = @_;
+    my $line = sprintf("==> %s <==", $name);
+    $line = colored(['green'], $line) if $is_tty;
+    print($line . "\n");
 }
 
 sub make_nonblocking {
