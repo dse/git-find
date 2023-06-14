@@ -12,79 +12,65 @@ use Getopt::Long;
 use Fcntl qw(F_GETFL F_SETFL O_NONBLOCK);
 
 our $list;
-our $inline;
 our @cmd;
 our @exclude;
 our $exit_code = 0;
 our @failures;
-our $quiet = 0;
 our $width;
 our @include;
 our $follow;
 
-our $TTY;
-open($TTY, '>', '/dev/tty') or undef $TTY;
-$TTY->autoflush(1) if defined $TTY;
+Getopt::Long::Configure('bundling', 'gnu_compat', 'no_ignore_case', 'no_permute');
+Getopt::Long::GetOptions(
+    'include=s' => sub {
+        if ($_[1] =~ m{^/(.*)/$}) {
+            my $regexp = qr{\Q$1\E};
+            push(@include, $regexp);
+        } else {
+            push(@include, $_[1]);
+        }
+    },
+    'exclude=s' => sub {
+        if ($_[1] =~ m{^/(.*)/$}) {
+            my $regexp = qr{\Q$1\E};
+            push(@exclude, $regexp);
+        } else {
+            push(@exclude, $_[1]);
+        }
+    },
+    'follow'      => \$follow,
+    'l|list'      => \$list,
+    # 'i|inline'    => sub { $inline = 1; $quiet = 0; },
+    # 'q|quiet'     => sub { $quiet += 1; $inline = 0; },
+    'w|width=i'   => \$width,
+) or die();
 
-our $COLS = 0 + `tput cols`;
-undef $COLS if !$COLS;
+while (scalar @ARGV) {
+    my $arg = shift(@ARGV);
+    last if $arg eq ';;';
+    push(@cmd, $arg);
+}
+$list = 1 if !scalar @cmd;
 
-main();
+my @find_arguments = @ARGV;
+push(@find_arguments, '.') if !scalar @find_arguments;
 
-sub main {
-    Getopt::Long::Configure('bundling', 'gnu_compat', 'no_ignore_case', 'no_permute');
-    Getopt::Long::GetOptions(
-        'include=s' => sub {
-            if ($_[1] =~ m{^/(.*)/$}) {
-                my $regexp = qr{\Q$1\E};
-                push(@include, $regexp);
-            } else {
-                push(@include, $_[1]);
-            }
-        },
-        'exclude=s' => sub {
-            if ($_[1] =~ m{^/(.*)/$}) {
-                my $regexp = qr{\Q$1\E};
-                push(@exclude, $regexp);
-            } else {
-                push(@exclude, $_[1]);
-            }
-        },
-        'follow'      => \$follow,
-        'l|list'      => \$list,
-        'i|inline'    => sub { $inline = 1; $quiet = 0; },
-        'q|quiet'     => sub { $quiet += 1; $inline = 0; },
-        'w|width=i'   => \$width,
-    ) or die();
+find({ follow_skip => $follow, wanted => \&wanted }, @find_arguments);
 
-    while (scalar @ARGV) {
-        my $arg = shift(@ARGV);
-        last if $arg eq ';;';
-        push(@cmd, $arg);
-    }
-    $list = 1 if !scalar @cmd;
-
-    my @find_arguments = @ARGV;
-    push(@find_arguments, '.') if !scalar @find_arguments;
-
-    find({ follow_skip => $follow, wanted => \&wanted }, @find_arguments);
-    print $TTY ("\r\e[K") if $quiet == 1 && defined $TTY;
-
-    if (scalar @failures) {
-        warn("The following repositories had issues:\n");
-        foreach my $failure (@failures) {
-            printf STDERR ("    %s\n", $failure->{name});
-            my $stderr = $failure->{stderr};
-            if ($stderr =~ m{\S}) {
-                $stderr =~ s{\R\s*\z}{};
-                $stderr .= "\n" if $stderr ne '';
-                $stderr =~ s{^}{    >   }gm;
-                printf STDERR $stderr;
-            }
+if (scalar @failures) {
+    warn("The following repositories had issues:\n");
+    foreach my $failure (@failures) {
+        warn(sprintf("    %s\n", $failure->{name}));
+        my $stderr = $failure->{stderr};
+        if ($stderr =~ m{\S}) {
+            $stderr =~ s{\R\s*\z}{};
+            $stderr .= "\n" if $stderr ne '';
+            $stderr =~ s{^}{    >   }gm;
+            printf STDERR $stderr;
         }
     }
-    exit($exit_code);
 }
+exit($exit_code);
 
 sub wanted {
     my @stat = lstat($_);
@@ -119,6 +105,7 @@ sub include_filename {
     }
     return 0;
 }
+
 sub exclude_filename {
     my ($filename, @pattern) = @_;
     return 0 if !scalar @pattern;
@@ -127,6 +114,7 @@ sub exclude_filename {
     }
     return 0;
 }
+
 sub filename_matches_pattern {
     my ($filename, $pattern) = @_;
     if (ref $pattern eq 'Regexp') {
@@ -135,37 +123,15 @@ sub filename_matches_pattern {
     return $filename eq $pattern;
 }
 
-sub inline_prefix {
-    my ($prefix, $isTTY) = @_;
-    $prefix = sprintf('[%s]', $prefix);
-    $prefix = sprintf('%-*s', $width - 1, $prefix) if $width;
-    $prefix = msg($prefix, $isTTY) . ' ';
-    return $prefix;
-}
-
 sub run_cmd {
     my ($dir, $name) = @_;
     my $inline_prefix1;
     my $inline_prefix2;
-    if (!$inline) {
-        $inline_prefix1 = inline_prefix($name, -t 1);
-        $inline_prefix2 = inline_prefix($name, -t 2);
-        if (!$quiet) {
-            print(msg("==> $name <=="), "\n");
-        } elsif ($quiet == 1) {
-            my $msg = "$name ...";
-            if (length($msg) > ($COLS - 1)) {
-                $msg = '... ' . substr($name, -($COLS - 5));
-            }
-            print $TTY ("\r" . colored(["green"], $msg), "\e[K") if defined $TTY;
-        }
-    }
+    printf STDERR ("==> %s <==\n", $name) if -t 2;
     my ($stdoutRead, $stdoutWrite, $stderrRead, $stderrWrite);
     pipe($stdoutRead, $stdoutWrite) or die("pipe: $!");
     pipe($stderrRead, $stderrWrite) or die("pipe: $!");
-    if ($cmd[0] eq 'git') {
-        splice(@cmd, 1, 0, '--no-pager');
-    }
+    splice(@cmd, 1, 0, '--no-pager') if $cmd[0] eq 'git';
     my $pid = fork() // die("fork: $!");
     if (!$pid) {
         chdir($dir) or die("chdir: $!");
@@ -202,7 +168,7 @@ sub run_cmd {
             my $bytes = sysread($stdoutRead, $data, 4096);
             if (!defined $bytes) {
                 last if $!{EAGAIN}; # maybe more to read later
-                warn(sprintf('sysread stdout: %s %s\n', errid(), $!));
+                warn("sysread stdout: $!\n");
             }
             if (!$bytes) {
                 if (!close($stdoutRead)) {
@@ -211,10 +177,6 @@ sub run_cmd {
                 $has_stdout = 0;
                 $select->remove($stdoutRead);
                 last;
-            }
-            if ($quiet == 1 && !$has_output++) {
-                print $TTY ("\r\e[K") if defined $TTY;
-                print(msg("==> $name <=="), "\n");
             }
             $buf1 .= $data;
             if ($buf1 =~ s{^.*\R}{}s) {
@@ -226,7 +188,7 @@ sub run_cmd {
             my $bytes = sysread($stderrRead, $data, 4096);
             if (!defined $bytes) {
                 last if $!{EAGAIN}; # maybe more to read later
-                warn(sprintf('sysread stderr: %s %s\n', errid(), $!));
+                warn("sysread stderr: $!\n");
             }
             if (!$bytes) {
                 if (!close($stderrRead)) {
@@ -235,10 +197,6 @@ sub run_cmd {
                 $has_stderr = 0;
                 $select->remove($stderrRead);
                 last;
-            }
-            if ($quiet == 1 && !$has_output++) {
-                print $TTY ("\r\e[K") if defined $TTY;
-                print(msg("==> $name <=="), "\n");
             }
             $buf2 .= $data;
             if ($buf2 =~ s{^.*\R}{}s) {
@@ -255,17 +213,6 @@ sub run_cmd {
         $exit_code = 1;
         push(@failures, { name => $name, stderr => $stderr });
     }
-}
-
-sub msg {
-    my ($msg, $tty) = @_;
-    $tty //= -t 1;
-    return $tty ? colored(['green'], $msg) : $msg;
-}
-
-sub errid {
-    my ($errid) = grep { $!{$_} } keys %!;
-    return $errid;
 }
 
 sub make_nonblocking {
