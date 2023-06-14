@@ -11,12 +11,11 @@ use List::Util qw(all any);
 use Getopt::Long;
 use Fcntl qw(F_GETFL F_SETFL O_NONBLOCK);
 
-our $verbose = 0;
 our $list;
 our $inline;
-our @command;
+our @cmd;
 our @exclude;
-our $exitCode = 0;
+our $exit_code = 0;
 our @failures;
 our $quiet = 0;
 our $width;
@@ -53,7 +52,6 @@ sub main {
         },
         'follow'      => \$follow,
         'l|list'      => \$list,
-        'v|verbose+'  => \$verbose,
         'i|inline'    => sub { $inline = 1; $quiet = 0; },
         'q|quiet'     => sub { $quiet += 1; $inline = 0; },
         'w|width=i'   => \$width,
@@ -62,14 +60,14 @@ sub main {
     while (scalar @ARGV) {
         my $arg = shift(@ARGV);
         last if $arg eq ';;';
-        push(@command, $arg);
+        push(@cmd, $arg);
     }
-    $list = 1 if !scalar @command;
+    $list = 1 if !scalar @cmd;
 
-    my @findArguments = @ARGV;
-    push(@findArguments, '.') if !scalar @findArguments;
+    my @find_arguments = @ARGV;
+    push(@find_arguments, '.') if !scalar @find_arguments;
 
-    find({ follow_skip => $follow, wanted => \&wanted }, @findArguments);
+    find({ follow_skip => $follow, wanted => \&wanted }, @find_arguments);
     print $TTY ("\r\e[K") if $quiet == 1 && defined $TTY;
 
     if (scalar @failures) {
@@ -85,7 +83,7 @@ sub main {
             }
         }
     }
-    exit($exitCode);
+    exit($exit_code);
 }
 
 sub wanted {
@@ -107,7 +105,7 @@ sub wanted {
         if ($list) {
             print($File::Find::name, "\n");
         } else {
-            runCmd($_, $File::Find::name);
+            run_cmd($_, $File::Find::name);
         }
         return $File::Find::prune = 1;
     }
@@ -137,7 +135,7 @@ sub filename_matches_pattern {
     return $filename eq $pattern;
 }
 
-sub inlinePrefix {
+sub inline_prefix {
     my ($prefix, $isTTY) = @_;
     $prefix = sprintf('[%s]', $prefix);
     $prefix = sprintf('%-*s', $width - 1, $prefix) if $width;
@@ -145,13 +143,13 @@ sub inlinePrefix {
     return $prefix;
 }
 
-sub runCmd {
+sub run_cmd {
     my ($dir, $name) = @_;
-    my $inlinePrefix1;
-    my $inlinePrefix2;
+    my $inline_prefix1;
+    my $inline_prefix2;
     if (!$inline) {
-        $inlinePrefix1 = inlinePrefix($name, -t 1);
-        $inlinePrefix2 = inlinePrefix($name, -t 2);
+        $inline_prefix1 = inline_prefix($name, -t 1);
+        $inline_prefix2 = inline_prefix($name, -t 2);
         if (!$quiet) {
             print(msg("==> $name <=="), "\n");
         } elsif ($quiet == 1) {
@@ -165,8 +163,8 @@ sub runCmd {
     my ($stdoutRead, $stdoutWrite, $stderrRead, $stderrWrite);
     pipe($stdoutRead, $stdoutWrite) or die("pipe: $!");
     pipe($stderrRead, $stderrWrite) or die("pipe: $!");
-    if ($command[0] eq 'git') {
-        splice(@command, 1, 0, '--no-pager');
+    if ($cmd[0] eq 'git') {
+        splice(@cmd, 1, 0, '--no-pager');
     }
     my $pid = fork() // die("fork: $!");
     if (!$pid) {
@@ -175,7 +173,7 @@ sub runCmd {
         open(STDERR, '>&', $stderrWrite) or die("reopen: $!");
         binmode($stdoutWrite);  # for syswrites
         binmode($stderrWrite);
-        exec(@command) or die("exec failed: $!");
+        exec(@cmd) or die("exec failed: $!");
     }
     binmode($stdoutRead);       # for sysreads
     binmode($stderrRead);
@@ -186,20 +184,20 @@ sub runCmd {
     STDERR->autoflush(1);
     make_nonblocking($stdoutRead);
     make_nonblocking($stderrRead);
-    my $hasStdout;
-    my $hasStderr;
+    my $has_stdout;
+    my $has_stderr;
     my $buf1 = '';
     my $buf2 = '';
-    my $hasOutput = 0;          # print "==> %s <==" once
+    my $has_output = 0;          # print "==> %s <==" once
     my $stderr = '';            # store for printing errors atexit
     my $failed;
     do {
         $! = 0;                 # clear error
         %! = ();
         my @ready = $select->can_read();
-        $hasStdout = grep { refaddr($_) == refaddr($stdoutRead) } @ready;
-        $hasStderr = grep { refaddr($_) == refaddr($stderrRead) } @ready;
-        while ($hasStdout) {
+        $has_stdout = grep { refaddr($_) == refaddr($stdoutRead) } @ready;
+        $has_stderr = grep { refaddr($_) == refaddr($stderrRead) } @ready;
+        while ($has_stdout) {
             my $data;
             my $bytes = sysread($stdoutRead, $data, 4096);
             if (!defined $bytes) {
@@ -210,11 +208,11 @@ sub runCmd {
                 if (!close($stdoutRead)) {
                     $failed = 1 if $? || (0 + $!);
                 }
-                $hasStdout = 0;
+                $has_stdout = 0;
                 $select->remove($stdoutRead);
                 last;
             }
-            if ($quiet == 1 && !$hasOutput++) {
+            if ($quiet == 1 && !$has_output++) {
                 print $TTY ("\r\e[K") if defined $TTY;
                 print(msg("==> $name <=="), "\n");
             }
@@ -223,7 +221,7 @@ sub runCmd {
                 print STDOUT $&;
             }
         }
-        while ($hasStderr) {
+        while ($has_stderr) {
             my $data;
             my $bytes = sysread($stderrRead, $data, 4096);
             if (!defined $bytes) {
@@ -234,11 +232,11 @@ sub runCmd {
                 if (!close($stderrRead)) {
                     $failed = 1 if $? || (0 + $!);
                 }
-                $hasStderr = 0;
+                $has_stderr = 0;
                 $select->remove($stderrRead);
                 last;
             }
-            if ($quiet == 1 && !$hasOutput++) {
+            if ($quiet == 1 && !$has_output++) {
                 print $TTY ("\r\e[K") if defined $TTY;
                 print(msg("==> $name <=="), "\n");
             }
@@ -248,13 +246,13 @@ sub runCmd {
             }
             $stderr .= $data;
         }
-    } while ($hasStdout || $hasStderr);
+    } while ($has_stdout || $has_stderr);
     print STDOUT $buf1;
     print STDERR $buf2;
     my $exited_pid = waitpid($pid, 0);
     $failed = 1 if $exited_pid < 0 || $? || (0 + $!);
     if ($failed) {
-        $exitCode = 1;
+        $exit_code = 1;
         push(@failures, { name => $name, stderr => $stderr });
     }
 }
@@ -268,16 +266,6 @@ sub msg {
 sub errid {
     my ($errid) = grep { $!{$_} } keys %!;
     return $errid;
-}
-
-sub exit_status {
-    my $exit = $? >> 8;
-    my $sig  = $? & 127;
-    my $dump = $? & 128;
-    my $errno = 0 + $!;
-    my $errid = (grep { $!{$_} } keys %!)[0];
-    my $errmsg = "$!";
-    return ($exit, $sig, $dump, $errno, $errid, $errmsg);
 }
 
 sub make_nonblocking {
