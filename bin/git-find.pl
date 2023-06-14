@@ -137,7 +137,7 @@ sub print_header {
 
 sub run_cmd {
     my ($dir, $name) = @_;
-    print_header($name);
+    print_header($name) unless $quiet;
     my ($stdoutRead, $stdoutWrite, $stderrRead, $stderrWrite);
     pipe($stdoutRead, $stdoutWrite) or die("pipe: $!");
     pipe($stderrRead, $stderrWrite) or die("pipe: $!");
@@ -187,6 +187,8 @@ sub run_cmd {
             }
             $buf1 .= $data;
             if ($buf1 =~ s{^.*\R}{}s) {
+                print_header($name) if $quiet && !$has_output;
+                $has_output = 1;
                 print STDOUT $&;
             }
         }
@@ -207,11 +209,17 @@ sub run_cmd {
             }
             $buf2 .= $data;
             if ($buf2 =~ s{^.*\R}{}s) {
+                print_header($name) if $quiet && !$has_output;
+                $has_output = 1;
                 print STDERR $&;
             }
             $stderr .= $data;
         }
     } while ($has_stdout || $has_stderr);
+    if ($buf1 ne '' || $buf2 ne '') {
+        print_header($name) if $quiet && !$has_output;
+        $has_output = 1;
+    }
     print STDOUT $buf1;
     print STDERR $buf2;
     my $exited_pid = waitpid($pid, 0);
