@@ -1,16 +1,15 @@
 #!/usr/bin/env perl
 use warnings;
 use strict;
-use open qw(:locale);
 
 use File::Find qw(find);
-use Cwd qw(getcwd);
 use IO::Handle;
 use Fcntl;
 use Term::ANSIColor;
 use IO::Select;
 use Scalar::Util qw(refaddr);
 use List::Util qw(all any);
+use Getopt::Long;
 
 our $verbose = 0;
 our $list;
@@ -25,7 +24,7 @@ our @gitCommand;
 our @exclude;
 our $exitCode = 0;
 our @failures;
-our $quiet;
+our $quiet = 0;
 our $width;
 our @include;
 our $follow;
@@ -44,9 +43,7 @@ if (!$COLS) {
 main();
 
 sub main {
-    use Getopt::Long;
     Getopt::Long::Configure('bundling', 'gnu_compat', 'no_ignore_case', 'no_permute');
-    warn("@ARGV\n");
     Getopt::Long::GetOptions(
         'include=s' => sub {
             if ($_[1] =~ m{^/(.*)/$}) {
@@ -74,7 +71,6 @@ sub main {
         'no-header'   => \$noHeader,
         'no-pager'    => \$noPager,
     ) or die();
-    warn("@ARGV\n");
 
     while (scalar @ARGV) {
         my $arg = shift(@ARGV);
