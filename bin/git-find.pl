@@ -22,6 +22,7 @@ our @failures;
 our $width;
 our @include;
 our $follow;
+our $quiet = 0;
 
 Getopt::Long::Configure('bundling', 'gnu_compat', 'no_ignore_case', 'no_permute');
 Getopt::Long::GetOptions(
@@ -43,9 +44,8 @@ Getopt::Long::GetOptions(
     },
     'follow'      => \$follow,
     'l|list'      => \$list,
-    # 'i|inline'    => sub { $inline = 1; $quiet = 0; },
-    # 'q|quiet'     => sub { $quiet += 1; $inline = 0; },
     'w|width=i'   => \$width,
+    'q|quiet+'    => \$quiet,
 ) or die();
 
 while (scalar @ARGV) {
@@ -126,9 +126,18 @@ sub filename_matches_pattern {
     return $filename eq $pattern;
 }
 
+sub print_header {
+    my ($name) = @_;
+    if (-t 1) {
+        print(colored(['green'], sprintf("==> %s <==", $name)) . "\n");
+    } else {
+        printf("==> %s <==\n", $name);
+    }
+}
+
 sub run_cmd {
     my ($dir, $name) = @_;
-    warn(colored(['green'], sprintf("==> %s <==", $name)) . "\n") if -t 2;
+    print_header($name);
     my ($stdoutRead, $stdoutWrite, $stderrRead, $stderrWrite);
     pipe($stdoutRead, $stdoutWrite) or die("pipe: $!");
     pipe($stderrRead, $stderrWrite) or die("pipe: $!");
