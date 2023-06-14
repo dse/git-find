@@ -11,6 +11,9 @@ use List::Util qw(all any);
 use Getopt::Long;
 use Fcntl qw(F_GETFL F_SETFL O_NONBLOCK);
 
+STDOUT->autoflush(1);
+STDERR->autoflush(1);
+
 our $list;
 our @cmd;
 our @exclude;
@@ -58,14 +61,14 @@ push(@find_arguments, '.') if !scalar @find_arguments;
 find({ follow_skip => $follow, wanted => \&wanted }, @find_arguments);
 
 if (scalar @failures) {
-    warn("The following repositories had issues:\n");
+    print STDERR ("The following repositories had issues:\n");
     foreach my $failure (@failures) {
-        warn(sprintf("    %s\n", $failure->{name}));
+        printf STDERR ("    %s\n", $failure->{name});
         my $stderr = $failure->{stderr};
         if ($stderr =~ m{\S}) {
             $stderr =~ s{\R\s*\z}{};
             $stderr .= "\n" if $stderr ne '';
-            $stderr =~ s{^}{    >   }gm;
+            $stderr =~ s{^}{    > }gm;
             printf STDERR $stderr;
         }
     }
@@ -125,9 +128,7 @@ sub filename_matches_pattern {
 
 sub run_cmd {
     my ($dir, $name) = @_;
-    my $inline_prefix1;
-    my $inline_prefix2;
-    printf STDERR ("==> %s <==\n", $name) if -t 2;
+    warn(colored(['green'], sprintf("==> %s <==", $name)) . "\n") if -t 2;
     my ($stdoutRead, $stdoutWrite, $stderrRead, $stderrWrite);
     pipe($stdoutRead, $stdoutWrite) or die("pipe: $!");
     pipe($stderrRead, $stderrWrite) or die("pipe: $!");
@@ -146,8 +147,6 @@ sub run_cmd {
     close($stderrWrite) or die("close: $!");
     close($stdoutWrite) or die("close: $!");
     my $select = IO::Select->new($stdoutRead, $stderrRead);
-    STDOUT->autoflush(1);
-    STDERR->autoflush(1);
     make_nonblocking($stdoutRead);
     make_nonblocking($stderrRead);
     my $has_stdout;
@@ -159,7 +158,6 @@ sub run_cmd {
     my $failed;
     do {
         $! = 0;                 # clear error
-        %! = ();
         my @ready = $select->can_read();
         $has_stdout = grep { refaddr($_) == refaddr($stdoutRead) } @ready;
         $has_stderr = grep { refaddr($_) == refaddr($stderrRead) } @ready;
