@@ -262,8 +262,7 @@ sub runCmd {
 sub msg {
     my ($msg, $tty) = @_;
     $tty //= -t 1;
-    return colored(['green'], $msg);
-    return $msg;
+    return $tty ? colored(['green'], $msg) : $msg;
 }
 
 sub errid {
