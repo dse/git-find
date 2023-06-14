@@ -134,7 +134,7 @@ sub wanted {
         if ($list) {
             print($File::Find::name, "\n");
         } else {
-            doTheFancyThing($_, $File::Find::name);
+            runCmd($_, $File::Find::name);
         }
         return $File::Find::prune = 1;
     }
@@ -188,7 +188,7 @@ sub filename_matches_pattern {
 
 use Fcntl qw(F_GETFL F_SETFL O_NONBLOCK);
 
-sub doTheFancyThing {
+sub runCmd {
     my ($dir, $name) = @_;
     my $stderr = '';
     my $failed;
