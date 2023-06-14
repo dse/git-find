@@ -1,10 +1,8 @@
 #!/usr/bin/env perl
 use warnings;
 use strict;
-use open qw(:locale);
 
 use File::Find qw(find);
-use Cwd qw(getcwd);
 use IO::Handle;
 use Fcntl;
 use Term::ANSIColor;
@@ -46,7 +44,6 @@ main();
 sub main {
     use Getopt::Long;
     Getopt::Long::Configure('bundling', 'gnu_compat', 'no_ignore_case', 'no_permute');
-    warn("@ARGV\n");
     Getopt::Long::GetOptions(
         'include=s' => sub {
             if ($_[1] =~ m{^/(.*)/$}) {
@@ -74,7 +71,6 @@ sub main {
         'no-header'   => \$noHeader,
         'no-pager'    => \$noPager,
     ) or die();
-    warn("@ARGV\n");
 
     while (scalar @ARGV) {
         my $arg = shift(@ARGV);
