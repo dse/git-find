@@ -13,7 +13,6 @@ use Scalar::Util qw(refaddr);
 use List::Util qw(all any);
 
 our $verbose = 0;
-our $noGit;
 our $list;
 our $inline;
 our $noHeader;
@@ -47,6 +46,7 @@ main();
 sub main {
     use Getopt::Long;
     Getopt::Long::Configure('bundling', 'gnu_compat', 'no_ignore_case', 'no_permute');
+    warn("@ARGV\n");
     Getopt::Long::GetOptions(
         'include=s' => sub {
             if ($_[1] =~ m{^/(.*)/$}) {
@@ -65,16 +65,16 @@ sub main {
             }
         },
         'follow'      => \$follow,
-        'G|no-git'    => \$noGit,
         'l|list'      => \$list,
         'v|verbose+'  => \$verbose,
         'i|inline'    => sub { $inline = 1; $quiet = 0; },
         'p|progress'  => \$progress,
-        'q|quiet'     => sub { $quiet = 1; $inline = 0; },
+        'q|quiet'     => sub { $quiet += 1; $inline = 0; },
         'w|width=i'   => \$width,
         'no-header'   => \$noHeader,
         'no-pager'    => \$noPager,
     ) or die();
+    warn("@ARGV\n");
 
     while (scalar @ARGV) {
         my $arg = shift(@ARGV);
@@ -92,7 +92,7 @@ sub main {
 
     find({ follow_skip => $follow, wanted => \&wanted }, @findArguments);
 
-    print $TTY ("\r\e[K") if $quiet && defined $TTY;
+    print $TTY ("\r\e[K") if $quiet == 1 && defined $TTY;
 
     if (scalar @failures) {
         warn("The following repositories had issues:\n");
@@ -191,7 +191,6 @@ sub filename_matches_pattern {
 }
 
 use Fcntl qw(F_GETFL F_SETFL O_NONBLOCK);
-use constant LINEBUF => 1;
 
 sub doTheFancyThing {
     my ($dir, $name) = @_;
@@ -209,7 +208,7 @@ sub doTheFancyThing {
     if (!$inline) {
         if (!$quiet) {
             print(msg("==> $name <=="), "\n");
-        } else {
+        } elsif ($quiet == 1) {
             my $msg = "$name ...";
             if (length($msg) > ($COLS - 1)) {
                 $msg = '... ' . substr($name, -($COLS - 5));
@@ -220,7 +219,11 @@ sub doTheFancyThing {
     my ($stdoutRead, $stdoutWrite, $stderrRead, $stderrWrite);
     pipe($stdoutRead, $stdoutWrite) or die("pipe: $!");
     pipe($stderrRead, $stderrWrite) or die("pipe: $!");
-    my @cmd = (($noGit ? () : ('git', '--no-pager')), @gitCommand);
+    if (scalar @gitCommand) {
+        if ($gitCommand[0] eq 'git') {
+            splice(@gitCommand, 1, 0, '--no-pager');
+        }
+    }
     my $pid = fork() // die("fork: $!");
     if (!$pid) {
         # child
@@ -229,7 +232,7 @@ sub doTheFancyThing {
         open(STDERR, '>&', $stderrWrite) or die("reopen: $!");
         binmode($stdoutWrite);  # on account of we're doing sysreads
         binmode($stderrWrite);  # ditto
-        exec(@cmd) or die("exec failed: $!");
+        exec(@gitCommand) or die("exec failed: $!");
     }
     binmode($stdoutRead);       # on account of we're doing sysreads
     binmode($stderrRead);       # ditto
@@ -252,10 +255,8 @@ sub doTheFancyThing {
 
     my $hasStdout;
     my $hasStderr;
-    my $buf1 = new My::LineBuf;
-    my $buf2 = new My::LineBuf;
-    $buf1->{prefix} = $inlinePrefixStdout if $inline;
-    $buf2->{prefix} = $inlinePrefixStderr if $inline;
+    my $buf1 = '';
+    my $buf2 = '';
 
     my $printed = 0;
     do {
@@ -282,11 +283,14 @@ sub doTheFancyThing {
                 $select->remove($stdoutRead);
                 last;
             }
-            if ($quiet && !$printed++) {
+            if ($quiet == 1 && !$printed++) {
                 print $TTY ("\r\e[K") if defined $TTY;
                 print(msg("==> $name <=="), "\n");
             }
-            print STDOUT $buf1->feed($data);
+            $buf1 .= $data;
+            if ($buf1 =~ s{^.*\R}{}s) {
+                print STDOUT $&;
+            }
         }
         while ($hasStderr) {
             my $data;
@@ -307,16 +311,19 @@ sub doTheFancyThing {
                 $select->remove($stderrRead);
                 last;
             }
-            if ($quiet && !$printed++) {
+            if ($quiet == 1 && !$printed++) {
                 print $TTY ("\r\e[K") if defined $TTY;
                 print(msg("==> $name <=="), "\n");
             }
-            print STDERR $buf2->feed($data);
+            $buf2 .= $data;
+            if ($buf2 =~ s{^.*\R}{}s) {
+                print STDERR $&;
+            }
             $stderr .= $data;
         }
     } while ($hasStdout || $hasStderr);
-    print STDOUT $buf1->finish();
-    print STDERR $buf2->finish();
+    print STDOUT $buf1;
+    print STDERR $buf2;
     my $retval = waitpid($pid, 0);
     my ($exit, $sig, $dump, $errno) = exit_status();
     if ($exit || $sig || $dump || $errno) {
@@ -349,41 +356,4 @@ sub exit_status {
     my $errid = (grep { $!{$_} } keys %!)[0];
     my $errmsg = "$!";
     return ($exit, $sig, $dump, $errno, $errid, $errmsg);
-}
-
-package My::LineBuf {
-    sub new {
-        my ($class, %args) = @_;
-        return bless({ %args, data => '' }, $class);
-    }
-    sub feed {
-        my ($self, $data) = @_;
-        $self->{data} .= $data;
-        my $index = rindex($self->{data}, "\n");
-        if ($index == -1) {
-            return '';
-        }
-        if ($index == length($self->{data}) - 1) {
-            my $data = $self->{data};
-            $self->{data} = '';
-            return $self->string($data);
-        }
-        $data = substr($self->{data}, 0, $index + 1);
-        $self->{data} = substr($self->{data}, $index + 1);
-        return $self->string($data);
-    }
-    sub finish {
-        my ($self) = @_;
-        my $data = $self->{data};
-        $self->{data} = '';
-        return '' if !length $data;
-        $data .= "\n" if substr($data, -1) ne "\n";
-        return $self->string($data);
-    }
-    sub string {
-        my ($self, $data) = @_;
-        my $prefix = $self->{prefix};
-        $data =~ s{^}{$prefix}gm if defined $prefix && $prefix ne '';
-        return $data;
-    }
 }
