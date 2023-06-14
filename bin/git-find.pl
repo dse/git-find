@@ -9,16 +9,11 @@ use IO::Select;
 use Scalar::Util qw(refaddr);
 use List::Util qw(all any);
 use Getopt::Long;
+use Fcntl qw(F_GETFL F_SETFL O_NONBLOCK);
 
 our $verbose = 0;
 our $list;
 our $inline;
-our $noHeader;
-our $noPager;
-our $minDepth;
-our $maxDepth;
-our $pipe;
-our $progress;
 our @command;
 our @exclude;
 our $exitCode = 0;
@@ -30,14 +25,10 @@ our $follow;
 
 our $TTY;
 open($TTY, '>', '/dev/tty') or undef $TTY;
-if (defined $TTY) {
-    $TTY->autoflush(1);
-}
+$TTY->autoflush(1) if defined $TTY;
 
 our $COLS = 0 + `tput cols`;
-if (!$COLS) {
-    undef $COLS;
-}
+undef $COLS if !$COLS;
 
 main();
 
@@ -64,29 +55,21 @@ sub main {
         'l|list'      => \$list,
         'v|verbose+'  => \$verbose,
         'i|inline'    => sub { $inline = 1; $quiet = 0; },
-        'p|progress'  => \$progress,
         'q|quiet'     => sub { $quiet += 1; $inline = 0; },
         'w|width=i'   => \$width,
-        'no-header'   => \$noHeader,
-        'no-pager'    => \$noPager,
     ) or die();
 
     while (scalar @ARGV) {
         my $arg = shift(@ARGV);
-        last if ($arg eq '---');
+        last if $arg eq ';;';
         push(@command, $arg);
     }
-    if (!scalar @command) {
-        $list = 1;
-    }
+    $list = 1 if !scalar @command;
 
     my @findArguments = @ARGV;
-    if (!scalar @findArguments) {
-        @findArguments = ('.');
-    }
+    push(@findArguments, '.') if !scalar @findArguments;
 
     find({ follow_skip => $follow, wanted => \&wanted }, @findArguments);
-
     print $TTY ("\r\e[K") if $quiet == 1 && defined $TTY;
 
     if (scalar @failures) {
@@ -108,27 +91,18 @@ sub main {
 sub wanted {
     my @stat = lstat($_);
     return if !scalar(@stat);
-    if (-l _) {                 # if symlink
-        @stat = stat($_);       # symlink target
-    }
+    @stat = stat($_) if -l _;   # symlink target
     return unless -d _;         # if symlink then symlink target
     my $filename = $_;
-    # return if scalar @exclude && grep { $filename eq $_ } @exclude;
     return $File::Find::prune = 1 if $_ eq 'node_modules';
-
     if (scalar @exclude) {
         my $excluded = exclude_filename($File::Find::name, @exclude);
-        if ($excluded) {
-            return $File::Find::prune = 1;
-        }
+        return $File::Find::prune = 1 if $excluded;
     }
     if (scalar @include) {
         my $included = include_filename($File::Find::name, @include);
-        if (!$included) {
-            return $File::Find::prune = 1;
-        }
+        return $File::Find::prune = 1 if !$included;
     }
-
     if (-d "$_/.git") {
         if ($list) {
             print($File::Find::name, "\n");
@@ -139,44 +113,22 @@ sub wanted {
     }
 }
 
-use constant DEBUG_INCLUDE_EXCLUDE => 0;
-
 sub include_filename {
     my ($filename, @pattern) = @_;
-    warn("include_filename @_\n") if DEBUG_INCLUDE_EXCLUDE;
-    if (!scalar @pattern) {
-        warn("    no includes specified; including\n") if DEBUG_INCLUDE_EXCLUDE;
-        return 1;
-    }
+    return 1 if !scalar @pattern;
     foreach my $pattern (@pattern) {
-        if (filename_matches_pattern($filename, $pattern)) {
-            warn("    filename matches $pattern; including\n") if DEBUG_INCLUDE_EXCLUDE;
-            return 1;
-        }
-        warn("    filename does not match $pattern\n") if DEBUG_INCLUDE_EXCLUDE;
+        return 1 if filename_matches_pattern($filename, $pattern);
     }
-    warn("    filename does not match any patterns; not including\n") if DEBUG_INCLUDE_EXCLUDE;
     return 0;
 }
-
 sub exclude_filename {
     my ($filename, @pattern) = @_;
-    warn("exclude_filename @_\n") if DEBUG_INCLUDE_EXCLUDE;
-    if (!scalar @pattern) {
-        warn("    no excludes specified; not excluding\n") if DEBUG_INCLUDE_EXCLUDE;
-        return 0;
-    }
+    return 0 if !scalar @pattern;
     foreach my $pattern (@pattern) {
-        if (filename_matches_pattern($filename, $pattern)) {
-            warn("    filename matches $pattern; excluding\n") if DEBUG_INCLUDE_EXCLUDE;
-            return 1;
-        }
-        warn("    filename does not match $pattern\n") if DEBUG_INCLUDE_EXCLUDE;
+        return 1 if filename_matches_pattern($filename, $pattern);
     }
-    warn("    filename does not match any patterns; not excluding\n") if DEBUG_INCLUDE_EXCLUDE;
     return 0;
 }
-
 sub filename_matches_pattern {
     my ($filename, $pattern) = @_;
     if (ref $pattern eq 'Regexp') {
@@ -185,18 +137,21 @@ sub filename_matches_pattern {
     return $filename eq $pattern;
 }
 
-use Fcntl qw(F_GETFL F_SETFL O_NONBLOCK);
+sub inlinePrefix {
+    my ($prefix, $isTTY) = @_;
+    $prefix = sprintf('[%s]', $prefix);
+    $prefix = sprintf('%-*s', $width - 1, $prefix) if $width;
+    $prefix = msg($prefix, $isTTY) . ' ';
+    return $prefix;
+}
 
 sub runCmd {
     my ($dir, $name) = @_;
-    my $failed;
-    my $inlinePrefixStdout = $inline ? msg("[$name]", -t 1) . " " : '';
-    my $inlinePrefixStderr = $inline ? msg("[$name]", -t 2) . " " : '';
-    if ($width && $inline) {
-        $inlinePrefixStdout = sprintf('%-*s  ', $width - 2, $inlinePrefixStdout);
-        $inlinePrefixStderr = sprintf('%-*s  ', $width - 2, $inlinePrefixStderr);
-    }
+    my $inlinePrefix1;
+    my $inlinePrefix2;
     if (!$inline) {
+        $inlinePrefix1 = inlinePrefix($name, -t 1);
+        $inlinePrefix2 = inlinePrefix($name, -t 2);
         if (!$quiet) {
             print(msg("==> $name <=="), "\n");
         } elsif ($quiet == 1) {
@@ -237,6 +192,7 @@ sub runCmd {
     my $buf2 = '';
     my $hasOutput = 0;          # print "==> %s <==" once
     my $stderr = '';            # store for printing errors atexit
+    my $failed;
     do {
         $! = 0;                 # clear error
         %! = ();
