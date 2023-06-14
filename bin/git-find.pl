@@ -1,7 +1,6 @@
 #!/usr/bin/env perl
 use warnings;
 use strict;
-
 use File::Find qw(find);
 use IO::Handle;
 use Fcntl;
@@ -190,16 +189,12 @@ use Fcntl qw(F_GETFL F_SETFL O_NONBLOCK);
 
 sub runCmd {
     my ($dir, $name) = @_;
-    my $stderr = '';
     my $failed;
-    my $failStatus;
     my $inlinePrefixStdout = $inline ? msg("[$name]", -t 1) . " " : '';
     my $inlinePrefixStderr = $inline ? msg("[$name]", -t 2) . " " : '';
     if ($width && $inline) {
-        my $pad = $width - length($name) - 2;
-        $pad = $pad > 0 ? ' ' x $pad : '';
-        $inlinePrefixStdout .= $pad;
-        $inlinePrefixStderr .= $pad;
+        $inlinePrefixStdout = sprintf('%-*s  ', $width - 2, $inlinePrefixStdout);
+        $inlinePrefixStderr = sprintf('%-*s  ', $width - 2, $inlinePrefixStderr);
     }
     if (!$inline) {
         if (!$quiet) {
@@ -215,48 +210,36 @@ sub runCmd {
     my ($stdoutRead, $stdoutWrite, $stderrRead, $stderrWrite);
     pipe($stdoutRead, $stdoutWrite) or die("pipe: $!");
     pipe($stderrRead, $stderrWrite) or die("pipe: $!");
-    if (scalar @command) {
-        if ($command[0] eq 'git') {
-            splice(@command, 1, 0, '--no-pager');
-        }
+    if ($command[0] eq 'git') {
+        splice(@command, 1, 0, '--no-pager');
     }
     my $pid = fork() // die("fork: $!");
     if (!$pid) {
-        # child
         chdir($dir) or die("chdir: $!");
         open(STDOUT, '>&', $stdoutWrite) or die("reopen: $!");
         open(STDERR, '>&', $stderrWrite) or die("reopen: $!");
-        binmode($stdoutWrite);  # on account of we're doing sysreads
-        binmode($stderrWrite);  # ditto
+        binmode($stdoutWrite);  # for syswrites
+        binmode($stderrWrite);
         exec(@command) or die("exec failed: $!");
     }
-    binmode($stdoutRead);       # on account of we're doing sysreads
-    binmode($stderrRead);       # ditto
-    # parent
+    binmode($stdoutRead);       # for sysreads
+    binmode($stderrRead);
     close($stderrWrite) or die("close: $!");
     close($stdoutWrite) or die("close: $!");
     my $select = IO::Select->new($stdoutRead, $stderrRead);
     STDOUT->autoflush(1);
     STDERR->autoflush(1);
-
-    # handles need to be non-blocking on account of select tells us which
-    # fds are ready to read without blocking.
-    {
-        my $flags;
-        $flags = fcntl($stdoutRead, F_GETFL, 0) or die("fcntl: $!");
-        fcntl($stdoutRead, F_SETFL, $flags | O_NONBLOCK) or die("fcntl: $!\n");
-        $flags = fcntl($stderrRead, F_GETFL, 0) or die("fcntl: $!");
-        fcntl($stderrRead, F_SETFL, $flags | O_NONBLOCK) or die("fcntl: $!\n");
-    }
-
+    make_nonblocking($stdoutRead);
+    make_nonblocking($stderrRead);
     my $hasStdout;
     my $hasStderr;
     my $buf1 = '';
     my $buf2 = '';
-
-    my $printed = 0;
+    my $hasOutput = 0;          # print "==> %s <==" once
+    my $stderr = '';            # store for printing errors atexit
     do {
-        $! = 0;
+        $! = 0;                 # clear error
+        %! = ();
         my @ready = $select->can_read();
         $hasStdout = grep { refaddr($_) == refaddr($stdoutRead) } @ready;
         $hasStderr = grep { refaddr($_) == refaddr($stderrRead) } @ready;
@@ -264,22 +247,18 @@ sub runCmd {
             my $data;
             my $bytes = sysread($stdoutRead, $data, 4096);
             if (!defined $bytes) {
-                last if ($!{EAGAIN}); # there'll be more bytes to read i guess
-                my $errid = errid();
-                warn("sysread stdout: $errid $!\n");
+                last if $!{EAGAIN}; # maybe more to read later
+                warn(sprintf('sysread stdout: %s %s\n', errid(), $!));
             }
             if (!$bytes) {
                 if (!close($stdoutRead)) {
-                    my ($exit, $sig, $dump, $errno) = exit_status();
-                    if ($exit || $sig || $dump || $errno) {
-                        $failed = 1;
-                    }
+                    $failed = 1 if $? || (0 + $!);
                 }
                 $hasStdout = 0;
                 $select->remove($stdoutRead);
                 last;
             }
-            if ($quiet == 1 && !$printed++) {
+            if ($quiet == 1 && !$hasOutput++) {
                 print $TTY ("\r\e[K") if defined $TTY;
                 print(msg("==> $name <=="), "\n");
             }
@@ -292,22 +271,18 @@ sub runCmd {
             my $data;
             my $bytes = sysread($stderrRead, $data, 4096);
             if (!defined $bytes) {
-                last if ($!{EAGAIN}); # there'll be more bytes to read i guess
-                my $errid = errid();
-                warn("sysread stderr: $errid $!\n");
+                last if $!{EAGAIN}; # maybe more to read later
+                warn(sprintf('sysread stderr: %s %s\n', errid(), $!));
             }
             if (!$bytes) {
                 if (!close($stderrRead)) {
-                    my ($exit, $sig, $dump, $errno) = exit_status();
-                    if ($exit || $sig || $dump || $errno) {
-                        $failed = 1;
-                    }
+                    $failed = 1 if $? || (0 + $!);
                 }
                 $hasStderr = 0;
                 $select->remove($stderrRead);
                 last;
             }
-            if ($quiet == 1 && !$printed++) {
+            if ($quiet == 1 && !$hasOutput++) {
                 print $TTY ("\r\e[K") if defined $TTY;
                 print(msg("==> $name <=="), "\n");
             }
@@ -320,16 +295,12 @@ sub runCmd {
     } while ($hasStdout || $hasStderr);
     print STDOUT $buf1;
     print STDERR $buf2;
-    my $retval = waitpid($pid, 0);
-    my ($exit, $sig, $dump, $errno) = exit_status();
-    if ($exit || $sig || $dump || $errno) {
-        $failed = 1;
-    }
+    my $exited_pid = waitpid($pid, 0);
+    $failed = 1 if $exited_pid < 0 || $? || (0 + $!);
     if ($failed) {
         $exitCode = 1;
         push(@failures, { name => $name, stderr => $stderr });
     }
-    return $retval;
 }
 
 sub msg {
@@ -352,4 +323,10 @@ sub exit_status {
     my $errid = (grep { $!{$_} } keys %!)[0];
     my $errmsg = "$!";
     return ($exit, $sig, $dump, $errno, $errid, $errmsg);
+}
+
+sub make_nonblocking {
+    my ($handle) = @_;
+    my $flags = fcntl($handle, F_GETFL, 0) or die("fcntl: $!");
+    fcntl($handle, F_SETFL, $flags | O_NONBLOCK) or die("fcntl: $!\n");
 }
