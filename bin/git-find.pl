@@ -27,28 +27,17 @@ our $inline = 0;
 
 Getopt::Long::Configure('gnu_getopt', 'no_permute');
 Getopt::Long::GetOptions(
-    'include=s' => sub {
-        if ($_[1] =~ m{^/(.*)/$}) {
-            my $regexp = qr{\Q$1\E};
-            push(@include, $regexp);
-        } else {
-            push(@include, $_[1]);
-        }
-    },
-    'exclude=s' => sub {
-        if ($_[1] =~ m{^/(.*)/$}) {
-            my $regexp = qr{\Q$1\E};
-            push(@exclude, $regexp);
-        } else {
-            push(@exclude, $_[1]);
-        }
-    },
+    'include=s' => \@include,
+    'exclude=s' => \@exclude,
     'follow' => \$follow,
     'l|list' => \$list,
     'w|width=i' => \$width,
     'q|quiet+' => \$quiet,
     'i|inline+' => \$inline,
 ) or die();
+
+@include = map { m{^/(.*)/$} ? qr{\Q$1\E} : $_ } @include;
+@exclude = map { m{^/(.*)/$} ? qr{\Q$1\E} : $_ } @exclude;
 
 while (scalar @ARGV) {
     my $arg = shift(@ARGV);
