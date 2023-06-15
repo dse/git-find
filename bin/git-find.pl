@@ -85,11 +85,11 @@ sub wanted {
     my $filename = $_;
     return $File::Find::prune = 1 if $_ eq 'node_modules';
     if (scalar @exclude) {
-        my $excluded = exclude_filename($File::Find::name, @exclude);
+        my $excluded = excludes_filename($File::Find::name, @exclude);
         return $File::Find::prune = 1 if $excluded;
     }
     if (scalar @include) {
-        my $included = include_filename($File::Find::name, @include);
+        my $included = includes_filename($File::Find::name, @include);
         return $File::Find::prune = 1 if !$included;
     }
     if (-d "$_/.git") {
@@ -102,7 +102,7 @@ sub wanted {
     }
 }
 
-sub include_filename {
+sub includes_filename {
     my ($filename, @pattern) = @_;
     return 1 if !scalar @pattern;
     foreach my $pattern (@pattern) {
@@ -111,7 +111,7 @@ sub include_filename {
     return 0;
 }
 
-sub exclude_filename {
+sub excludes_filename {
     my ($filename, @pattern) = @_;
     return 0 if !scalar @pattern;
     foreach my $pattern (@pattern) {
