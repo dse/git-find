@@ -59,7 +59,7 @@ if (scalar @failures) {
         if ($stderr =~ m{\S}) {
             $stderr =~ s{\R\s*\z}{};
             $stderr .= "\n" if $stderr ne '';
-            $stderr =~ s{^}{    > }gm;
+            $stderr =~ s{^(?=.)}{    > }gm;
             printf STDERR $stderr;
         }
     }
@@ -73,6 +73,7 @@ sub wanted {
     return unless -d _;         # if symlink then symlink target
     my $filename = $_;
     return $File::Find::prune = 1 if $_ eq 'node_modules';
+    return $File::Find::prune = 1 if $_ eq 'vendor' && (-e 'composer.lock' || -e 'composer.json');
     if (scalar @excludes) {
         my $excluded = excludes_filename($File::Find::name, @excludes);
         return $File::Find::prune = 1 if $excluded;
