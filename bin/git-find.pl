@@ -110,26 +110,26 @@ sub run_cmd {
     my ($dir, $name) = @_;
     my $printed_header = 0;
     print_header($name, -t 1) if !$quiet && !$inline && !$printed_header++;
-    my ($stdoutRead, $stdoutWrite, $stderrRead, $stderrWrite);
-    pipe($stdoutRead, $stdoutWrite) or die("pipe: $!");
-    pipe($stderrRead, $stderrWrite) or die("pipe: $!");
+    my ($stdout_read, $stdout_write, $stderr_read, $stderr_write);
+    pipe($stdout_read, $stdout_write) or die("pipe: $!");
+    pipe($stderr_read, $stderr_write) or die("pipe: $!");
     splice(@cmd, 1, 0, '--no-pager') if $cmd[0] eq 'git';
     my $pid = fork() // die("fork: $!");
     if (!$pid) {
         chdir($dir) or die("chdir: $!");
-        open(STDOUT, '>&', $stdoutWrite) or die("reopen: $!");
-        open(STDERR, '>&', $stderrWrite) or die("reopen: $!");
-        binmode($stdoutWrite);  # for syswrites
-        binmode($stderrWrite);
+        open(STDOUT, '>&', $stdout_write) or die("reopen: $!");
+        open(STDERR, '>&', $stderr_write) or die("reopen: $!");
+        binmode($stdout_write);  # for syswrites
+        binmode($stderr_write);
         exec(@cmd) or die("exec failed: $!");
     }
-    binmode($stdoutRead);       # for sysreads
-    binmode($stderrRead);
-    close($stderrWrite) or die("close: $!");
-    close($stdoutWrite) or die("close: $!");
-    my $select = IO::Select->new($stdoutRead, $stderrRead);
-    make_nonblocking($stdoutRead);
-    make_nonblocking($stderrRead);
+    binmode($stdout_read);       # for sysreads
+    binmode($stderr_read);
+    close($stderr_write) or die("close: $!");
+    close($stdout_write) or die("close: $!");
+    my $select = IO::Select->new($stdout_read, $stderr_read);
+    make_nonblocking($stdout_read);
+    make_nonblocking($stderr_read);
     my $has_stdout;
     my $has_stderr;
     my $buf_stdout = '';
@@ -139,21 +139,21 @@ sub run_cmd {
     do {
         $! = 0;                 # clear error
         my @ready = $select->can_read();
-        $has_stdout = grep { refaddr($_) == refaddr($stdoutRead) } @ready;
-        $has_stderr = grep { refaddr($_) == refaddr($stderrRead) } @ready;
+        $has_stdout = grep { refaddr($_) == refaddr($stdout_read) } @ready;
+        $has_stderr = grep { refaddr($_) == refaddr($stderr_read) } @ready;
         while ($has_stdout) {
             my $data;
-            my $bytes = sysread($stdoutRead, $data, 4096);
+            my $bytes = sysread($stdout_read, $data, 4096);
             if (!defined $bytes) {
                 last if $!{EAGAIN}; # maybe more to read later
                 warn("sysread stdout: $!\n");
             }
             if (!$bytes) {
-                if (!close($stdoutRead)) {
+                if (!close($stdout_read)) {
                     $failed = 1 if $? || (0 + $!);
                 }
                 $has_stdout = 0;
-                $select->remove($stdoutRead);
+                $select->remove($stdout_read);
                 last;
             }
             $buf_stdout .= $data;
@@ -164,17 +164,17 @@ sub run_cmd {
         }
         while ($has_stderr) {
             my $data;
-            my $bytes = sysread($stderrRead, $data, 4096);
+            my $bytes = sysread($stderr_read, $data, 4096);
             if (!defined $bytes) {
                 last if $!{EAGAIN}; # maybe more to read later
                 warn("sysread stderr: $!\n");
             }
             if (!$bytes) {
-                if (!close($stderrRead)) {
+                if (!close($stderr_read)) {
                     $failed = 1 if $? || (0 + $!);
                 }
                 $has_stderr = 0;
-                $select->remove($stderrRead);
+                $select->remove($stderr_read);
                 last;
             }
             $buf_stderr .= $data;
