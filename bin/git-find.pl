@@ -16,19 +16,19 @@ STDERR->autoflush(1);
 
 our $list;
 our @cmd;
-our @exclude;
+our @excludes;
 our $exit_code = 0;
 our @failures;
 our $width;
-our @include;
+our @includes;
 our $follow;
 our $quiet = 0;
 our $inline = 0;
 
 Getopt::Long::Configure('gnu_getopt', 'no_permute');
 Getopt::Long::GetOptions(
-    'include=s' => \@include,
-    'exclude=s' => \@exclude,
+    'include=s' => \@includes,
+    'exclude=s' => \@excludes,
     'follow' => \$follow,
     'l|list' => \$list,
     'w|width=i' => \$width,
@@ -36,8 +36,8 @@ Getopt::Long::GetOptions(
     'i|inline+' => \$inline,
 ) or die();
 
-@include = map { m{^/(.*)/$} ? qr{\Q$1\E} : $_ } @include;
-@exclude = map { m{^/(.*)/$} ? qr{\Q$1\E} : $_ } @exclude;
+@includes = map { m{^/(.*)/$} ? qr{\Q$1\E} : $_ } @includes;
+@excludes = map { m{^/(.*)/$} ? qr{\Q$1\E} : $_ } @excludes;
 
 while (scalar @ARGV) {
     my $arg = shift(@ARGV);
@@ -73,12 +73,12 @@ sub wanted {
     return unless -d _;         # if symlink then symlink target
     my $filename = $_;
     return $File::Find::prune = 1 if $_ eq 'node_modules';
-    if (scalar @exclude) {
-        my $excluded = excludes_filename($File::Find::name, @exclude);
+    if (scalar @excludes) {
+        my $excluded = excludes_filename($File::Find::name, @excludes);
         return $File::Find::prune = 1 if $excluded;
     }
-    if (scalar @include) {
-        my $included = includes_filename($File::Find::name, @include);
+    if (scalar @includes) {
+        my $included = includes_filename($File::Find::name, @includes);
         return $File::Find::prune = 1 if !$included;
     }
     if (-d "$_/.git") {
