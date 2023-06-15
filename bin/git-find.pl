@@ -132,8 +132,8 @@ sub run_cmd {
     make_nonblocking($stderrRead);
     my $has_stdout;
     my $has_stderr;
-    my $buf1 = '';
-    my $buf2 = '';
+    my $buf_stdout = '';
+    my $buf_stderr = '';
     my $stderr = '';            # store for printing errors atexit
     my $failed;
     do {
@@ -156,8 +156,8 @@ sub run_cmd {
                 $select->remove($stdoutRead);
                 last;
             }
-            $buf1 .= $data;
-            if ($buf1 =~ s{^.*\R}{}s) {
+            $buf_stdout .= $data;
+            if ($buf_stdout =~ s{^.*\R}{}s) {
                 print_header($name, -t 1) if $quiet == 1 && !$inline && !$printed_header++;
                 print STDOUT prefixed($&, $name, -t 1);
             }
@@ -177,23 +177,23 @@ sub run_cmd {
                 $select->remove($stderrRead);
                 last;
             }
-            $buf2 .= $data;
-            if ($buf2 =~ s{^.*\R}{}s) {
+            $buf_stderr .= $data;
+            if ($buf_stderr =~ s{^.*\R}{}s) {
                 print_header($name, -t 1) if $quiet == 1 && !$inline && !$printed_header++;
                 print STDERR prefixed($&, $name, -t 2);
             }
             $stderr .= $data;
         }
     } while ($has_stdout || $has_stderr);
-    if ($buf1 ne '' || $buf2 ne '') {
+    if ($buf_stdout ne '' || $buf_stderr ne '') {
         print_header($name, -t 1) if $quiet == 1 && !$inline && !$printed_header++;
-        if ($buf1 ne '') {
-            $buf1 .= "\n" if $buf1 !~ m{\R\z}; # make sure output ends with newline
-            print STDOUT prefixed($buf1, $name, -t 1);
+        if ($buf_stdout ne '') {
+            $buf_stdout .= "\n" if $buf_stdout !~ m{\R\z}; # make sure output ends with newline
+            print STDOUT prefixed($buf_stdout, $name, -t 1);
         }
-        if ($buf2 ne '') {
-            $buf2 .= "\n" if $buf2 !~ m{\R\z};
-            print STDERR prefixed($buf1, $name, -t 2);
+        if ($buf_stderr ne '') {
+            $buf_stderr .= "\n" if $buf_stderr !~ m{\R\z};
+            print STDERR prefixed($buf_stdout, $name, -t 2);
         }
     }
     my $exited_pid = waitpid($pid, 0);
