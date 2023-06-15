@@ -52,7 +52,7 @@ push(@find_arguments, '.') if !scalar @find_arguments;
 find({ follow_skip => $follow, wanted => \&wanted }, @find_arguments);
 
 if (scalar @failures) {
-    print STDERR ("The following repositories had issues:\n");
+    print STDERR ("The following repositories had failures:\n");
     foreach my $failure (@failures) {
         printf STDERR ("    %s\n", $failure->{name});
         my $stderr = $failure->{stderr};
