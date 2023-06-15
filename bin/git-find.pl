@@ -215,6 +215,7 @@ sub inline_prefix {
     my $prefix = sprintf('[%s] ', $name);
     $prefix = sprintf("%-*s", $width, $prefix) if $width;
     $prefix = colored(['green'], $prefix) if $is_tty;
+    return $prefix;
 }
 
 sub prefixed {
