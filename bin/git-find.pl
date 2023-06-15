@@ -89,19 +89,13 @@ sub wanted {
 sub includes_filename {
     my ($filename, @pattern) = @_;
     return 1 if !scalar @pattern;
-    foreach my $pattern (@pattern) {
-        return 1 if filename_matches_pattern($filename, $pattern);
-    }
-    return 0;
+    return any { filename_matches_pattern($filename, $_) } @pattern;
 }
 
 sub excludes_filename {
     my ($filename, @pattern) = @_;
     return 0 if !scalar @pattern;
-    foreach my $pattern (@pattern) {
-        return 1 if filename_matches_pattern($filename, $pattern);
-    }
-    return 0;
+    return any { filename_matches_pattern($filename, $_) } @pattern;
 }
 
 sub filename_matches_pattern {
