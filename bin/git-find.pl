@@ -74,14 +74,8 @@ sub wanted {
     my $filename = $_;
     return $File::Find::prune = 1 if $_ eq 'node_modules';
     return $File::Find::prune = 1 if $_ eq 'vendor' && (-e 'composer.lock' || -e 'composer.json');
-    if (scalar @excludes) {
-        my $excluded = excludes_filename($File::Find::name, @excludes);
-        return $File::Find::prune = 1 if $excluded;
-    }
-    if (scalar @includes) {
-        my $included = includes_filename($File::Find::name, @includes);
-        return $File::Find::prune = 1 if !$included;
-    }
+    return $File::Find::prune = 1 if excludes_filename($File::Find::name, @excludes);
+    return $File::Find::prune = 1 if includes_filename($File::Find::name, @includes);
     if (-d "$_/.git") {
         if ($list) {
             print($File::Find::name, "\n");
