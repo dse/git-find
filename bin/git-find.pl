@@ -10,6 +10,10 @@ use Scalar::Util qw(refaddr);
 use List::Util qw(all any);
 use Getopt::Long;
 use Fcntl qw(F_GETFL F_SETFL O_NONBLOCK);
+use File::Path qw(make_path);
+use File::Temp qw(tempfile);
+use File::Spec::Functions qw(abs2rel);
+use File::Basename qw(dirname);
 
 STDOUT->autoflush(1);
 STDERR->autoflush(1);
@@ -25,7 +29,7 @@ our $follow;
 our $quiet = 0;
 our $inline = 0;
 
-Getopt::Long::Configure('gnu_getopt', 'no_permute');
+Getopt::Long::Configure('gnu_getopt', 'no_permute', 'no_ignore_case');
 Getopt::Long::GetOptions(
     'include=s' => \@includes,
     'exclude=s' => \@excludes,
@@ -52,17 +56,29 @@ push(@find_arguments, '.') if !scalar @find_arguments;
 find({ follow_skip => $follow, wanted => \&wanted }, @find_arguments);
 
 if (scalar @failures) {
+    make_path("./git-find-logs");
+    my ($fh, $filename) = tempfile("XXXXXXXXXXXXXXXX",
+                                   DIR => "./git-find-logs",
+                                   SUFFIX => ".log");
     print STDERR ("The following repositories had failures:\n");
     foreach my $failure (@failures) {
         printf STDERR ("    %s\n", $failure->{name});
-        my $stderr = $failure->{stderr};
-        if ($stderr =~ m{\S}) {
-            $stderr =~ s{\R\s*\z}{};
-            $stderr .= "\n" if $stderr ne '';
-            $stderr =~ s{^(?=.)}{    > }gm;
-            printf STDERR $stderr;
+        printf $fh ("==> %s <== [%s]\n", $failure->{name}, scalar(localtime($failure->{start})));
+        foreach my $log (@{$failure->{logs}}) {
+            my $str = $log->[0];
+            my $indent = $log->[1] == 1 ? '  <OUT> ' : '  <ERR> ';
+            $str =~ s{^(?=.)}{$indent}gms;
+            print $fh $str;
         }
     }
+    my $latest = "./git-find-logs/latest.log";
+    my $rel = abs2rel($filename, dirname($latest));
+    my $see_file = $filename;
+    if (unlink($latest) &&
+        symlink(abs2rel($filename, "./git-find-logs"), $latest)) {
+        $see_file = $latest;
+    }
+    print STDERR ("See $latest for details.\n");
 }
 exit($exit_code);
 
@@ -108,6 +124,17 @@ sub filename_matches_pattern {
 
 sub run_cmd {
     my ($dir, $name) = @_;
+    my @logs;
+    my @stdout;
+    my @stderr;
+    my $log = {
+        start => time(),
+        dir => $dir,
+        name => $name,
+        logs => \@logs,
+        stdout => \@stdout,
+        stderr => \@stderr,
+    };
     my $printed_header = 0;
     print_header($name, -t 1) if !$quiet && !$inline && !$printed_header++;
     my ($stdout_read, $stdout_write, $stderr_read, $stderr_write);
@@ -134,7 +161,19 @@ sub run_cmd {
     my $has_stderr;
     my $buf_stdout = '';
     my $buf_stderr = '';
-    my $stderr = '';            # store for printing errors atexit
+    my $stdout = sub {
+        my $str = join('', @_);
+        push(@logs, [$str, 1]);
+        push(@stdout, $str);
+        print STDOUT prefixed($str, $name, -t 1);
+    };
+    my $stderr = sub {
+        my $str = join('', @_);
+        push(@logs, [$str, 2]);
+        push(@stderr, $str);
+        print STDERR prefixed($str, $name, -t 2);
+    };
+    # my $stderr = '';            # store for printing errors atexit
     my $failed;
     do {
         $! = 0;                 # clear error
@@ -159,7 +198,7 @@ sub run_cmd {
             $buf_stdout .= $data;
             if ($buf_stdout =~ s{^.*\R}{}s) {
                 print_header($name, -t 1) if $quiet == 1 && !$inline && !$printed_header++;
-                print STDOUT prefixed($&, $name, -t 1);
+                &$stdout($&);
             }
         }
         while ($has_stderr) {
@@ -180,27 +219,27 @@ sub run_cmd {
             $buf_stderr .= $data;
             if ($buf_stderr =~ s{^.*\R}{}s) {
                 print_header($name, -t 1) if $quiet == 1 && !$inline && !$printed_header++;
-                print STDERR prefixed($&, $name, -t 2);
+                &$stderr($&);
             }
-            $stderr .= $data;
         }
     } while ($has_stdout || $has_stderr);
     if ($buf_stdout ne '' || $buf_stderr ne '') {
         print_header($name, -t 1) if $quiet == 1 && !$inline && !$printed_header++;
         if ($buf_stdout ne '') {
             $buf_stdout .= "\n" if $buf_stdout !~ m{\R\z}; # make sure output ends with newline
-            print STDOUT prefixed($buf_stdout, $name, -t 1);
+            &$stdout($buf_stdout);
         }
         if ($buf_stderr ne '') {
             $buf_stderr .= "\n" if $buf_stderr !~ m{\R\z};
-            print STDERR prefixed($buf_stdout, $name, -t 2);
+            &$stderr($buf_stderr);
         }
     }
     my $exited_pid = waitpid($pid, 0);
     $failed = 1 if $exited_pid < 0 || $? || (0 + $!);
+    $log->{end} = time();
     if ($failed) {
         $exit_code = 1;
-        push(@failures, { name => $name, stderr => $stderr });
+        push(@failures, $log);
     }
 }
 
