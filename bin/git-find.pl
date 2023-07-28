@@ -48,7 +48,11 @@ while (scalar @ARGV) {
     last if $arg eq ';;';
     push(@cmd, $arg);
 }
-$list = 1 if !scalar @cmd;
+if (scalar @cmd) {
+    splice(@cmd, 1, 0, '--no-pager') if $cmd[0] eq 'git';
+} else {
+    $list = 1;
+}
 
 my @find_arguments = @ARGV;
 push(@find_arguments, '.') if !scalar @find_arguments;
@@ -71,14 +75,8 @@ if (scalar @failures) {
             print $fh $str;
         }
     }
-    my $latest = "./git-find-logs/latest.log";
-    my $rel = abs2rel($filename, dirname($latest));
     my $see_file = $filename;
-    if (unlink($latest) &&
-        symlink(abs2rel($filename, "./git-find-logs"), $latest)) {
-        $see_file = $latest;
-    }
-    print STDERR ("See $latest for details.\n");
+    print STDERR ("See $see_file for details.\n");
 }
 exit($exit_code);
 
@@ -140,7 +138,6 @@ sub run_cmd {
     my ($stdout_read, $stdout_write, $stderr_read, $stderr_write);
     pipe($stdout_read, $stdout_write) or die("pipe: $!");
     pipe($stderr_read, $stderr_write) or die("pipe: $!");
-    splice(@cmd, 1, 0, '--no-pager') if $cmd[0] eq 'git';
     my $pid = fork() // die("fork: $!");
     if (!$pid) {
         chdir($dir) or die("chdir: $!");
