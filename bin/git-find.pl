@@ -46,7 +46,7 @@ to run a git (or other) command in all repositories:
              [--inline] [-w, --width=<cols>]
              [git] <cmd> [<arg> ...]
 to list repositories:
-    git find [<options> ...] [-l, --list]
+    git find [<options> ...] ***-l|--list***
 to specify directory trees:
     git find [<options> ...] [git] <cmd> [<arg> ...] ***\\\;\\\; <dir> ...***
 END
@@ -282,34 +282,36 @@ sub make_nonblocking {
 
 sub print_usage {
     my ($usage) = @_;
-    if (!-t 1) {
-        print($usage);
-        return;
-    }
-    my $default_fg = "\e[39m";
-    my $green = "\e[32m";
-    my $italic = "\e[3m";
-    my $unitalic = "\e[23m";
-    my $bold = "\e[1m";
-    my $unbold = "\e[22m";
     my $TWO_STARS = qr{(?<!\*)\*\*(?!\*)};
     my $THREE_STARS = qr{(?<!\*)\*\*\*(?!\*)};
-    $usage =~ s{^to .*$}{green($&)}ge;
-    $usage =~ s{<(?<var>\S+)>}{green(italic($+{var}))}ge;
-    $usage =~ s{${TWO_STARS}(?<text>.*?)${TWO_STARS}}{bold($+{text})}ge;
-    $usage =~ s{${THREE_STARS}(?<text>.*?)${THREE_STARS}}{bold(blue_bg($+{text}))}ge;
+    $usage =~ s{^to .*$}
+               {green($&)}ge;
+    $usage =~ s{<(\S+)>}
+               {!-t 1 ? $& : green(italic($1))}ge;
+    $usage =~ s{${TWO_STARS}(.*?)${TWO_STARS}}
+               {bold($1)}ge;
+    $usage =~ s{${THREE_STARS}(.*?)${THREE_STARS}}
+               {bold(blue_bg($1))}ge;
     print($usage);
 }
 
+sub vt {
+    return join("", @_) if !-t 1;
+    return "\e[#{" . join("", @_) . "\e[#}";
+}
 sub bold {
-    return "\e[1m" . join("", @_) . "\e[22m";
+    return join("", @_) if !-t 1;
+    return vt("\e[1m" . join("", @_) . "\e[22m");
 }
 sub italic {
-    return "\e[3m" . join("", @_) . "\e[23m";
+    return join("", @_) if !-t 1;
+    return vt("\e[3m" . join("", @_) . "\e[23m");
 }
 sub green {
-    return "\e[32m" . join("", @_) . "\e[39m";
+    return join("", @_) if !-t 1;
+    return vt("\e[32m" . join("", @_) . "\e[39m");
 }
 sub blue_bg {
-    return "\e[44m" . join("", @_) . "\e[49m";
+    return join("", @_) if !-t 1;
+    return vt("\e[44m" . join("", @_) . "\e[49m");
 }
