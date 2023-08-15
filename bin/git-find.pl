@@ -25,7 +25,6 @@ our $exit_code = 0;
 our @failures;
 our $width;
 our @includes;
-our $follow;
 our $quiet = 0;
 our $inline = 0;
 
@@ -33,12 +32,24 @@ Getopt::Long::Configure('gnu_getopt', 'no_permute', 'no_ignore_case');
 Getopt::Long::GetOptions(
     'include=s' => \@includes,
     'exclude=s' => \@excludes,
-    'follow' => \$follow,
     'l|list' => \$list,
     'w|width=i' => \$width,
     'q|quiet+' => \$quiet,
     'i|inline+' => \$inline,
+    'help' => sub { usage(); exit(0); },
 ) or die();
+
+sub usage { print_usage(<<"END"); }
+to run a git (or other) command in all repositories:
+    git find [--include=<glob> ...] [--exclude=<glob> ...]
+             [--quiet]
+             [--inline] [-w, --width=<cols>]
+             [git] <cmd> [<arg> ...]
+to list repositories:
+    git find [<options> ...] [-l, --list]
+to specify directory trees:
+    git find [<options> ...] [git] <cmd> [<arg> ...] ***\\\;\\\; <dir> ...***
+END
 
 @includes = map { m{^/(.*)/$} ? qr{\Q$1\E} : $_ } @includes;
 @excludes = map { m{^/(.*)/$} ? qr{\Q$1\E} : $_ } @excludes;
@@ -57,7 +68,7 @@ if (scalar @cmd) {
 my @find_arguments = @ARGV;
 push(@find_arguments, '.') if !scalar @find_arguments;
 
-find({ follow_skip => $follow, wanted => \&wanted }, @find_arguments);
+find({ wanted => \&wanted }, @find_arguments);
 
 if (scalar @failures) {
     make_path("./git-find-logs");
@@ -267,4 +278,38 @@ sub make_nonblocking {
     my ($handle) = @_;
     my $flags = fcntl($handle, F_GETFL, 0) or die("fcntl: $!");
     fcntl($handle, F_SETFL, $flags | O_NONBLOCK) or die("fcntl: $!\n");
+}
+
+sub print_usage {
+    my ($usage) = @_;
+    if (!-t 1) {
+        print($usage);
+        return;
+    }
+    my $default_fg = "\e[39m";
+    my $green = "\e[32m";
+    my $italic = "\e[3m";
+    my $unitalic = "\e[23m";
+    my $bold = "\e[1m";
+    my $unbold = "\e[22m";
+    my $TWO_STARS = qr{(?<!\*)\*\*(?!\*)};
+    my $THREE_STARS = qr{(?<!\*)\*\*\*(?!\*)};
+    $usage =~ s{^to .*$}{green($&)}ge;
+    $usage =~ s{<(?<var>\S+)>}{green(italic($+{var}))}ge;
+    $usage =~ s{${TWO_STARS}(?<text>.*?)${TWO_STARS}}{bold($+{text})}ge;
+    $usage =~ s{${THREE_STARS}(?<text>.*?)${THREE_STARS}}{bold(blue_bg($+{text}))}ge;
+    print($usage);
+}
+
+sub bold {
+    return "\e[1m" . join("", @_) . "\e[22m";
+}
+sub italic {
+    return "\e[3m" . join("", @_) . "\e[23m";
+}
+sub green {
+    return "\e[32m" . join("", @_) . "\e[39m";
+}
+sub blue_bg {
+    return "\e[44m" . join("", @_) . "\e[49m";
 }
