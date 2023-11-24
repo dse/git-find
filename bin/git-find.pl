@@ -27,6 +27,7 @@ our $width;
 our @includes;
 our $quiet = 0;
 our $inline = 0;
+our $cwd;
 
 Getopt::Long::Configure('gnu_getopt', 'no_permute', 'no_ignore_case');
 Getopt::Long::GetOptions(
@@ -36,6 +37,7 @@ Getopt::Long::GetOptions(
     'w|width=i' => \$width,
     'q|quiet+' => \$quiet,
     'i|inline+' => \$inline,
+    'C|cwd=s' => \$cwd,
     'help' => sub { usage(); exit(0); },
 ) or die();
 
@@ -66,7 +68,11 @@ if (scalar @cmd) {
 }
 
 my @find_arguments = @ARGV;
-push(@find_arguments, '.') if !scalar @find_arguments;
+if (defined $cwd) {
+    push(@find_arguments, $cwd) if !scalar @find_arguments;
+} else {
+    push(@find_arguments, '.') if !scalar @find_arguments;
+}
 
 find({ wanted => \&wanted }, @find_arguments);
 
