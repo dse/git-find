@@ -161,7 +161,7 @@ sub run_cmd {
     my @logs;
     my @stdout;
     my @stderr;
-    my $log = {
+    my $run_info = {
         start => time(),
         dir => $dir,
         name => $name,
@@ -270,18 +270,18 @@ sub run_cmd {
     my $exited_pid = waitpid($pid, 0);
     if ($exited_pid == -1) {
         $failed = 1;
-        $log->{error}->{no_exited_pid} = 1;
+        $run_info->{error}->{no_exited_pid} = 1;
     }
     if ($?) {
         $failed = 1;
-        $log->{error}->{exit_status} = $? >> 8 if $? >> 8;
-        $log->{error}->{signal}      = $? & 127 if $? & 127;
-        $log->{error}->{coredump}    = 1 if $? & 128;
+        $run_info->{error}->{exit_status} = $? >> 8 if $? >> 8;
+        $run_info->{error}->{signal}      = $? & 127 if $? & 127;
+        $run_info->{error}->{coredump}    = 1 if $? & 128;
     }
-    $log->{end} = time();
+    $run_info->{end} = time();
     if ($failed) {
         $exit_code = 1;
-        push(@failures, $log);
+        push(@failures, $run_info);
     }
 }
 
