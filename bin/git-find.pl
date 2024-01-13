@@ -97,36 +97,6 @@ if (defined $cwd) {
     push(@find_arguments, '.') if !scalar @find_arguments;
 }
 
-our $error_log_filename;
-our $symlink_valid;
-sub open_error_log {
-    state $fh;
-    return $fh if $fh;
-    log_cleanup();
-    ($fh, $error_log_filename) = tempfile("XXXXXXXXXXXXXXXX",
-                                                 DIR => $log_dir,
-                                                 SUFFIX => ".log");
-    if (-e $log_symlink) {
-        unlink($log_symlink) or warn("$log_symlink: $!");
-    }
-    if (!-e $log_symlink) {
-        if (symlink($error_log_filename, $log_symlink)) {
-            $symlink_valid = 1;
-        } else {
-            warn("$log_symlink: $!");
-        }
-    }
-    return $fh;
-}
-sub see_error_log {
-    if (defined $error_log_filename) {
-        printf STDERR ("\nSome runs failed; see %s\n", $error_log_filename);
-        if ($symlink_valid) {
-            printf STDERR (  "                  aka %s\n", $log_symlink);
-        }
-    }
-}
-
 END {
     see_error_log();
 }
@@ -309,7 +279,7 @@ sub run_cmd {
     }
     if (length($err)) {
         $exit_code = 1;
-        my $fh = open_error_log;
+        my $fh = open_error_log();
         printf $fh ("==> %s <== [%s]\n", $name, scalar(localtime($start)));
         print $fh $log;
         print $fh $err;
@@ -387,6 +357,37 @@ sub blue_bg {
     return vt("\e[44m" . join("", @_) . "\e[49m");
 }
 
+our $error_log_filename;
+our $symlink_valid;
+
+sub open_error_log {
+    state $fh;
+    return $fh if $fh;
+    log_cleanup();
+    ($fh, $error_log_filename) = tempfile("XXXXXXXXXXXXXXXX",
+                                                 DIR => $log_dir,
+                                                 SUFFIX => ".log");
+    if (-e $log_symlink) {
+        unlink($log_symlink) or warn("$log_symlink: $!");
+    }
+    if (!-e $log_symlink) {
+        if (symlink($error_log_filename, $log_symlink)) {
+            $symlink_valid = 1;
+        } else {
+            warn("$log_symlink: $!");
+        }
+    }
+    return $fh;
+}
+
+sub see_error_log {
+    if (defined $error_log_filename) {
+        printf STDERR ("\nSome runs failed; see %s\n", $error_log_filename);
+        if ($symlink_valid) {
+            printf STDERR (  "                  aka %s\n", $log_symlink);
+        }
+    }
+}
 
 sub log_cleanup {
     make_path($log_dir);
