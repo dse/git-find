@@ -44,7 +44,6 @@ STDERR->autoflush(1);
 our $list;
 our @cmd;
 our @excludes;
-our $exit_code = 0;
 our @failures;
 our $width;
 our @includes;
@@ -105,6 +104,8 @@ $SIG{QUIT} = sub {
     see_error_log();
     exit();
 };
+
+our $exit_code = 0;
 
 find({ wanted => \&wanted }, @find_arguments);
 
