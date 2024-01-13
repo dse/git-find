@@ -97,11 +97,12 @@ if (defined $cwd) {
     push(@find_arguments, '.') if !scalar @find_arguments;
 }
 
-END {
-    see_error_log();
-}
-
 $SIG{INT} = sub {
+    see_error_log();
+    exit();
+};
+$SIG{QUIT} = sub {
+    see_error_log();
     exit();
 };
 
@@ -365,8 +366,8 @@ sub open_error_log {
     return $fh if $fh;
     log_cleanup();
     ($fh, $error_log_filename) = tempfile("XXXXXXXXXXXXXXXX",
-                                                 DIR => $log_dir,
-                                                 SUFFIX => ".log");
+                                          DIR => $log_dir,
+                                          SUFFIX => ".log");
     if (-e $log_symlink) {
         unlink($log_symlink) or warn("$log_symlink: $!");
     }
@@ -381,11 +382,12 @@ sub open_error_log {
 }
 
 sub see_error_log {
-    if (defined $error_log_filename) {
-        printf STDERR ("\nSome runs failed; see %s\n", $error_log_filename);
-        if ($symlink_valid) {
-            printf STDERR (  "                  aka %s\n", $log_symlink);
-        }
+    return if !defined $error_log_filename;
+    state %printed;
+    return if $printed{$error_log_filename}++;
+    printf STDERR ("\nSome runs failed; see %s\n", $error_log_filename);
+    if ($symlink_valid) {
+        printf STDERR (  "                  aka %s\n", $log_symlink);
     }
 }
 
@@ -409,4 +411,8 @@ sub log_cleanup {
     closedir($dh);
     rmdir($old_log_dir);
     $! = undef;
+}
+
+END {
+    see_error_log();
 }
