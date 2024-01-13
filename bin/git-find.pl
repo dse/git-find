@@ -94,9 +94,17 @@ sub open_error_log {
         return $fh;
     }
     make_path("./git-find-logs");
+    my $symlink_name = "./git-find-logs/latest.log";
     ($fh, $error_log_filename) = tempfile("XXXXXXXXXXXXXXXX",
                                           DIR => "./git-find-logs",
                                           SUFFIX => ".log");
+    if (-e $symlink_name) {
+        unlink($symlink_name) or warn("$symlink_name: $!");
+    }
+    if (!-e $symlink_name) {
+        symlink($error_log_filename, $symlink_name) or
+          warn("$symlink_name: $!");
+    }
     return $fh;
 }
 sub see_error_log {
