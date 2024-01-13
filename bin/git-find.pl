@@ -15,6 +15,7 @@ use File::Temp qw(tempfile);
 use File::Spec::Functions qw(abs2rel);
 use File::Basename qw(dirname);
 use Config;
+use feature qw(state);
 
 my %sig_name;
 my %sig_num;
@@ -86,35 +87,37 @@ if (defined $cwd) {
     push(@find_arguments, '.') if !scalar @find_arguments;
 }
 
+our $error_log_filename;
+sub open_error_log {
+    state $fh;
+    if ($fh) {
+        return $fh;
+    }
+    make_path("./git-find-logs");
+    ($fh, $error_log_filename) = tempfile("XXXXXXXXXXXXXXXX",
+                                          DIR => "./git-find-logs",
+                                          SUFFIX => ".log");
+    return $fh;
+}
+sub see_error_log {
+    if (defined $error_log_filename) {
+        printf STDERR ("\nSome runs failed; see %s\n", $error_log_filename);
+    }
+}
+
+END {
+    see_error_log();
+}
+
+$SIG{INT} = sub {
+    exit();
+};
+
 find({ wanted => \&wanted }, @find_arguments);
 
-if (scalar @failures) {
-    make_path("./git-find-logs");
-    my ($fh, $filename) = tempfile("XXXXXXXXXXXXXXXX",
-                                   DIR => "./git-find-logs",
-                                   SUFFIX => ".log");
-    print STDERR ("The following repositories had failures:\n");
-    foreach my $failure (@failures) {
-        printf STDERR ("    %s\n", $failure->{name});
-        printf $fh ("==> %s <== [%s]\n", $failure->{name}, scalar(localtime($failure->{start})));
-        foreach my $log (@{$failure->{logs}}) {
-            my $str = $log->[0];
-            my $indent = $log->[1] == 1 ? '  <OUT> ' : '  <ERR> ';
-            $str =~ s{^(?=.)}{$indent}gms;
-            print $fh $str;
-        }
-        if ($failure->{error}) {
-            printf $fh ("  [exit status %d]\n", $failure->{error}->{exit_status})
-              if $failure->{error}->{exit_status};
-            printf $fh ("  [signal %d %s]\n", $failure->{error}->{signal},
-                        $sig_name{$failure->{error}->{signal}})
-              if $failure->{error}->{signal};
-        }
-    }
-    my $see_file = $filename;
-    print STDERR ("See $see_file for details.\n");
-}
 exit($exit_code);
+
+###############################################################################
 
 sub wanted {
     my @stat = lstat($_);
@@ -158,17 +161,11 @@ sub filename_matches_pattern {
 
 sub run_cmd {
     my ($dir, $name) = @_;
-    my @logs;
-    my @stdout;
-    my @stderr;
-    my $run_info = {
-        start => time(),
-        dir => $dir,
-        name => $name,
-        logs => \@logs,
-        stdout => \@stdout,
-        stderr => \@stderr,
-    };
+
+    my $log = '';
+    my $err = '';
+    my $start = time();
+
     my $printed_header = 0;
     print_header($name, -t 1) if !$quiet && !$inline && !$printed_header++;
     my ($stdout_read, $stdout_write, $stderr_read, $stderr_write);
@@ -196,15 +193,13 @@ sub run_cmd {
     my $buf_stderr = '';
     my $stdout = sub {
         my $str = join('', @_);
-        push(@logs, [$str, 1]);
-        push(@stdout, $str);
         print STDOUT prefixed($str, $name, -t 1);
+        $log .= indent($str, '      > ');
     };
     my $stderr = sub {
         my $str = join('', @_);
-        push(@logs, [$str, 2]);
-        push(@stderr, $str);
         print STDERR prefixed($str, $name, -t 2);
+        $log .= indent($str, '  !!! > ');
     };
     # my $stderr = '';            # store for printing errors atexit
     my $failed;
@@ -218,11 +213,18 @@ sub run_cmd {
             my $bytes = sysread($stdout_read, $data, 4096);
             if (!defined $bytes) {
                 last if $!{EAGAIN}; # maybe more to read later
-                warn("sysread stdout: $!\n");
+                $err .= "sysread stdout: $!\n";
             }
             if (!$bytes) {
                 if (!close($stdout_read)) {
-                    $failed = 1 if $? || (0 + $!);
+                    if ($!) {
+                        $err .= "close stdout: $!\n";
+                    }
+                    if ($?) {
+                        my ($exit, $sig) = ($? >> 8, $? & 127);
+                        $err .= "close stdout: exited returning $exit\n" if $exit;
+                        $err .= "close stdout: killed with signal $sig\n" if $sig;
+                    }
                 }
                 $has_stdout = 0;
                 $select->remove($stdout_read);
@@ -239,11 +241,18 @@ sub run_cmd {
             my $bytes = sysread($stderr_read, $data, 4096);
             if (!defined $bytes) {
                 last if $!{EAGAIN}; # maybe more to read later
-                warn("sysread stderr: $!\n");
+                $err .= "sysread stderr: $!\n";
             }
             if (!$bytes) {
                 if (!close($stderr_read)) {
-                    $failed = 1 if $? || (0 + $!);
+                    if ($!) {
+                        $err .= "close stderr: $!\n";
+                    }
+                    if ($?) {
+                        my ($exit, $sig) = ($? >> 8, $? & 127);
+                        $err .= "close stderr: exited returning $exit\n" if $exit;
+                        $err .= "close stderr: killed with signal $sig\n" if $sig;
+                    }
                 }
                 $has_stderr = 0;
                 $select->remove($stderr_read);
@@ -269,19 +278,19 @@ sub run_cmd {
     }
     my $exited_pid = waitpid($pid, 0);
     if ($exited_pid == -1) {
-        $failed = 1;
-        $run_info->{error}->{no_exited_pid} = 1;
+        $err .= "child process not found\n";
     }
     if ($?) {
-        $failed = 1;
-        $run_info->{error}->{exit_status} = $? >> 8 if $? >> 8;
-        $run_info->{error}->{signal}      = $? & 127 if $? & 127;
-        $run_info->{error}->{coredump}    = 1 if $? & 128;
+        my ($exit, $sig) = ($? >> 8, $? & 127);
+        $err .= "child exited returning $exit\n" if $exit;
+        $err .= "child killed with signal $sig\n" if $sig;
     }
-    $run_info->{end} = time();
-    if ($failed) {
+    if (length($err)) {
         $exit_code = 1;
-        push(@failures, $run_info);
+        my $fh = open_error_log;
+        printf $fh ("==> %s <== [%s]\n", $name, scalar(localtime($start)));
+        print $fh $log;
+        print $fh $err;
     }
 }
 
@@ -298,6 +307,12 @@ sub prefixed {
     return $str if !$inline;
     my $prefix = inline_prefix($name, $is_tty);
     $str =~ s{^(?=.)}{$prefix}gm;
+    return $str;
+}
+
+sub indent {
+    my ($str, $indent) = @_;
+    $str =~ s{^(?=.)}{$indent}gms;
     return $str;
 }
 
