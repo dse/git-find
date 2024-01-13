@@ -17,6 +17,16 @@ use File::Basename qw(dirname);
 use Config;
 use feature qw(state);
 
+our $log_dir;
+our $old_log_dir;
+our $log_symlink;
+{
+    my $state_home = $ENV{XDG_STATE_HOME} // "$ENV{HOME}/.local/state";
+    $log_dir = "${state_home}/git-find/log";
+    $old_log_dir = "git-find-logs";
+    $log_symlink = "${log_dir}/latest.log";
+}
+
 my %sig_name;
 my %sig_num;
 {
@@ -88,28 +98,32 @@ if (defined $cwd) {
 }
 
 our $error_log_filename;
+our $symlink_valid;
 sub open_error_log {
     state $fh;
-    if ($fh) {
-        return $fh;
-    }
-    make_path("./git-find-logs");
-    my $symlink_name = "./git-find-logs/latest.log";
+    return $fh if $fh;
+    log_cleanup();
     ($fh, $error_log_filename) = tempfile("XXXXXXXXXXXXXXXX",
-                                          DIR => "./git-find-logs",
-                                          SUFFIX => ".log");
-    if (-e $symlink_name) {
-        unlink($symlink_name) or warn("$symlink_name: $!");
+                                                 DIR => $log_dir,
+                                                 SUFFIX => ".log");
+    if (-e $log_symlink) {
+        unlink($log_symlink) or warn("$log_symlink: $!");
     }
-    if (!-e $symlink_name) {
-        symlink($error_log_filename, $symlink_name) or
-          warn("$symlink_name: $!");
+    if (!-e $log_symlink) {
+        if (symlink($error_log_filename, $log_symlink)) {
+            $symlink_valid = 1;
+        } else {
+            warn("$log_symlink: $!");
+        }
     }
     return $fh;
 }
 sub see_error_log {
     if (defined $error_log_filename) {
         printf STDERR ("\nSome runs failed; see %s\n", $error_log_filename);
+        if ($symlink_valid) {
+            printf STDERR (  "                  aka %s\n", $log_symlink);
+        }
     }
 }
 
@@ -221,17 +235,17 @@ sub run_cmd {
             my $bytes = sysread($stdout_read, $data, 4096);
             if (!defined $bytes) {
                 last if $!{EAGAIN}; # maybe more to read later
-                $err .= "sysread stdout: $!\n";
+                $err .= "  sysread stdout: $!\n";
             }
             if (!$bytes) {
                 if (!close($stdout_read)) {
                     if ($!) {
-                        $err .= "close stdout: $!\n";
+                        $err .= "  close stdout: $!\n";
                     }
                     if ($?) {
                         my ($exit, $sig) = ($? >> 8, $? & 127);
-                        $err .= "close stdout: exited returning $exit\n" if $exit;
-                        $err .= "close stdout: killed with signal $sig\n" if $sig;
+                        $err .= "  close stdout: exited returning $exit\n" if $exit;
+                        $err .= "  close stdout: killed with signal $sig\n" if $sig;
                     }
                 }
                 $has_stdout = 0;
@@ -249,17 +263,17 @@ sub run_cmd {
             my $bytes = sysread($stderr_read, $data, 4096);
             if (!defined $bytes) {
                 last if $!{EAGAIN}; # maybe more to read later
-                $err .= "sysread stderr: $!\n";
+                $err .= "  sysread stderr: $!\n";
             }
             if (!$bytes) {
                 if (!close($stderr_read)) {
                     if ($!) {
-                        $err .= "close stderr: $!\n";
+                        $err .= "  close stderr: $!\n";
                     }
                     if ($?) {
                         my ($exit, $sig) = ($? >> 8, $? & 127);
-                        $err .= "close stderr: exited returning $exit\n" if $exit;
-                        $err .= "close stderr: killed with signal $sig\n" if $sig;
+                        $err .= "  close stderr: exited returning $exit\n" if $exit;
+                        $err .= "  close stderr: killed with signal $sig\n" if $sig;
                     }
                 }
                 $has_stderr = 0;
@@ -286,12 +300,12 @@ sub run_cmd {
     }
     my $exited_pid = waitpid($pid, 0);
     if ($exited_pid == -1) {
-        $err .= "child process not found\n";
+        $err .= "  child process not found\n";
     }
     if ($?) {
         my ($exit, $sig) = ($? >> 8, $? & 127);
-        $err .= "child exited returning $exit\n" if $exit;
-        $err .= "child killed with signal $sig\n" if $sig;
+        $err .= "  child exited returning $exit\n" if $exit;
+        $err .= "  child killed with signal $sig\n" if $sig;
     }
     if (length($err)) {
         $exit_code = 1;
@@ -371,4 +385,27 @@ sub green {
 sub blue_bg {
     return join("", @_) if !-t 1;
     return vt("\e[44m" . join("", @_) . "\e[49m");
+}
+
+
+sub log_cleanup {
+    make_path($log_dir);
+    my $dh;
+    opendir($dh, $old_log_dir) or do { $! = undef; return; };
+    while (defined(my $filename = readdir($dh))) {
+        next if $filename eq '.' || $filename eq '..';
+        my $pathname = "$old_log_dir/$filename";
+        my $new_pathname = "$log_dir/$filename";
+        if (!lstat($pathname)) {
+            next;
+        }
+        if (-l _ || -p _ || -S _ || -b _ || -c _) {
+            unlink($pathname);
+            next;
+        }
+        rename($pathname, $new_pathname) or warn("$pathname => $new_pathname: $!");
+    }
+    closedir($dh);
+    rmdir($old_log_dir);
+    $! = undef;
 }
