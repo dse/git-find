@@ -14,6 +14,18 @@ use File::Path qw(make_path);
 use File::Temp qw(tempfile);
 use File::Spec::Functions qw(abs2rel);
 use File::Basename qw(dirname);
+use Config;
+
+my %sig_name;
+my %sig_num;
+{
+    my @sig_name = split(' ', $Config{sig_name});
+    my @sig_num = split(' ', $Config{sig_num});
+    for (my $i = 0; $i < scalar @sig_name && $i < scalar @sig_num; $i += 1) {
+        $sig_name{$sig_num[$i]} = $sig_name[$i];
+        $sig_num{$sig_name[$i]} = $sig_num[$i];
+    }
+}
 
 STDOUT->autoflush(1);
 STDERR->autoflush(1);
@@ -94,7 +106,8 @@ if (scalar @failures) {
         if ($failure->{error}) {
             printf $fh ("  [exit status %d]\n", $failure->{error}->{exit_status})
               if $failure->{error}->{exit_status};
-            printf $fh ("  [signal %d]\n", $failure->{error}->{signal})
+            printf $fh ("  [signal %d %s]\n", $failure->{error}->{signal},
+                        $sig_name{$failure->{error}->{signal}})
               if $failure->{error}->{signal};
         }
     }
