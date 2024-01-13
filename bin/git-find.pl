@@ -91,6 +91,12 @@ if (scalar @failures) {
             $str =~ s{^(?=.)}{$indent}gms;
             print $fh $str;
         }
+        if ($failure->{error}) {
+            printf $fh ("  [exit status %d]\n", $failure->{error}->{exit_status})
+              if $failure->{error}->{exit_status};
+            printf $fh ("  [signal %d]\n", $failure->{error}->{signal})
+              if $failure->{error}->{signal};
+        }
     }
     my $see_file = $filename;
     print STDERR ("See $see_file for details.\n");
@@ -249,7 +255,16 @@ sub run_cmd {
         }
     }
     my $exited_pid = waitpid($pid, 0);
-    $failed = 1 if $exited_pid < 0 || $? || (0 + $!);
+    if ($exited_pid == -1) {
+        $failed = 1;
+        $log->{error}->{no_exited_pid} = 1;
+    }
+    if ($?) {
+        $failed = 1;
+        $log->{error}->{exit_status} = $? >> 8 if $? >> 8;
+        $log->{error}->{signal}      = $? & 127 if $? & 127;
+        $log->{error}->{coredump}    = 1 if $? & 128;
+    }
     $log->{end} = time();
     if ($failed) {
         $exit_code = 1;
