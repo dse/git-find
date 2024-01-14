@@ -119,6 +119,7 @@ sub wanted {
     @stat = stat($_) if -l _;   # symlink target
     return unless -d _;         # if symlink then symlink target
     my $filename = $_;
+    return $File::Find::prune = 1 if $_ eq 'git-find-logs';
     return $File::Find::prune = 1 if $_ eq 'node_modules';
     return $File::Find::prune = 1 if $_ eq 'vendor' && (-e 'composer.lock' || -e 'composer.json');
     return $File::Find::prune = 1 if excludes_filename($File::Find::name, @excludes);
