@@ -116,8 +116,8 @@ exit($exit_code);
 sub wanted {
     my @stat = lstat($_);
     return if !scalar(@stat);
-    @stat = stat($_) if -l _;   # symlink target
-    return unless -d _;         # if symlink then symlink target
+    @stat = stat($_) if -l _ && $_ eq '.'; # only follow symlink if it's a target you specified
+    return unless -d _;         # if symlink then check symlink target
     my $filename = $_;
     return $File::Find::prune = 1 if $_ eq 'git-find-logs';
     return $File::Find::prune = 1 if $_ eq 'node_modules';
