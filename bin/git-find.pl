@@ -75,9 +75,11 @@ to specify directory trees:
     git find [<options> ...] [git] <cmd> [<arg> ...] ***\\\;\\\; <dir> ...***
 END
 
+# any --include or --exclude of the form /xxx/ becomes a regexp.
 @includes = map { m{^/(.*)/$} ? qr{\Q$1\E} : $_ } @includes;
 @excludes = map { m{^/(.*)/$} ? qr{\Q$1\E} : $_ } @excludes;
 
+# @cmd will contain arguments before \;\;
 while (scalar @ARGV) {
     my $arg = shift(@ARGV);
     last if $arg eq ';;';
@@ -89,6 +91,7 @@ if (scalar @cmd) {
     $list = 1;
 }
 
+# arguments after \;\; become starting points for find.
 my @find_arguments = @ARGV;
 if (defined $cwd) {
     push(@find_arguments, $cwd) if !scalar @find_arguments;
