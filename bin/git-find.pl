@@ -87,6 +87,8 @@ END
 foreach my $rule (@rules) {
     if ($rule->{pattern} =~ m{^/(.*)/$}) {
         $rule->{pattern} = qr{\Q$1\E};
+    } elsif ($rule->{pattern} =~ m{^/(.*)/i$}) {
+        $rule->{pattern} = qr{\Q$1\E}i;
     }
 }
 
