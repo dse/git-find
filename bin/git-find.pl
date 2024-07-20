@@ -50,6 +50,7 @@ our @includes;
 our $quiet = 0;
 our $inline = 0;
 our $cwd;
+our $plain;
 
 Getopt::Long::Configure('gnu_getopt', 'no_permute', 'no_ignore_case');
 Getopt::Long::GetOptions(
@@ -60,6 +61,7 @@ Getopt::Long::GetOptions(
     'q|quiet+' => \$quiet,
     'i|inline+' => \$inline,
     'C|cwd=s' => \$cwd,
+    'p|plain' => \$plain,
     'help' => sub { usage(); exit(0); },
 ) or die();
 
@@ -294,6 +296,10 @@ sub run_cmd {
 
 sub inline_prefix {
     my ($name, $is_tty) = @_;
+    if ($plain) {
+        return sprintf("%-*s ", $width, $name) if $width;
+        return sprintf("%s ", $name);
+    }
     my $prefix = sprintf('[%s] ', $name);
     $prefix = sprintf("%-*s", $width, $prefix) if $width;
     $prefix = colored(['green'], $prefix) if $is_tty;
@@ -316,8 +322,13 @@ sub indent {
 
 sub print_header {
     my ($name, $is_tty) = @_;
-    my $line = sprintf("==> %s <==", $name);
-    $line = colored(['green'], $line) if $is_tty;
+    my $line;
+    if ($plain) {
+        $line = sprintf("%s", $name);
+    } else {
+        $line = sprintf("==> %s <==", $name);
+        $line = colored(['green'], $line) if $is_tty;
+    }
     print($line . "\n");
 }
 
@@ -370,7 +381,8 @@ sub open_error_log {
     state $fh;
     return $fh if $fh;
     log_cleanup();
-    ($fh, $error_log_filename) = tempfile("XXXXXXXXXXXXXXXX",
+    my $time = time();
+    ($fh, $error_log_filename) = tempfile("${time}-XXXXXXXXXXXXXXXX",
                                           DIR => $log_dir,
                                           SUFFIX => ".log");
     if (-e $log_symlink) {
