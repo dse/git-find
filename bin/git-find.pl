@@ -87,7 +87,7 @@ END
 # any --include or --exclude of the form /xxx/ becomes a regexp.
 foreach my $rule (@rules) {
     my ($type, $pattern) = @$rule{qw(type pattern)};
-    if ($pattern =~ /^(?<whole>=)?(?<regexp>.*?)(?<flags>[i]*)$/) {
+    if ($pattern =~ /^(?<whole>=)?\/(?<regexp>.*)\/(?<flags>[i]*)$/) {
         my ($whole, $regexp, $flags) = @+{qw(whole regexp flags)};
         if (defined $whole && $whole ne '') {
             $regexp = sprintf("^%s\$", $regexp);
@@ -150,7 +150,7 @@ sub wanted {
         my $pattern = $rule->{pattern};
         my $type = $rule->{type};
         my $this_match = 0;
-        if (ref $pattern eq 'RegExp' && $_ =~ $pattern) {
+        if (ref $pattern eq 'Regexp' && $_ =~ $pattern) {
             $this_match = 1;
         } elsif (ref $pattern eq '' && $_ eq $pattern) {
             $this_match = 1;
