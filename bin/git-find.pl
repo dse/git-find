@@ -16,6 +16,7 @@ use File::Spec::Functions qw(abs2rel);
 use File::Basename qw(dirname);
 use Config;
 use feature qw(state);
+use Data::Dumper qw(Dumper);
 
 our $log_dir;
 our $old_log_dir;
@@ -85,14 +86,20 @@ END
 
 # any --include or --exclude of the form /xxx/ becomes a regexp.
 foreach my $rule (@rules) {
-    if ($rule->{pattern} =~ m{^/(.*)/$}) {
-        $rule->{pattern} = qr{\Q$1\E};
-    } elsif ($rule->{pattern} =~ m{^/(.*)/i$}) {
-        $rule->{pattern} = qr{\Q$1\E}i;
+    my ($type, $pattern) = @$rule{qw(type pattern)};
+    if ($pattern =~ /^(?<whole>=)?(?<regexp>.*?)(?<flags>[i]*)$/) {
+        my ($whole, $regexp, $flags) = @+{qw(whole regexp flags)};
+        if (defined $whole && $whole ne '') {
+            $regexp = sprintf("^%s\$", $regexp);
+        }
+        if (defined $flags && $flags ne '') {
+            $regexp = sprintf("(?%s:%s)", $flags, $regexp);
+        }
+        $rule->{pattern} = qr{$regexp};
     }
 }
 
-# @cmd will contain arguments before \;\;
+# @Cmd will contain arguments before \;\;
 while (scalar @ARGV) {
     my $arg = shift(@ARGV);
     last if $arg eq ';;';
@@ -433,6 +440,14 @@ sub log_cleanup {
     closedir($dh);
     rmdir($old_log_dir);
     $! = undef;
+}
+
+sub dumper {
+    local $Data::Dumper::Terse = 1;
+    local $Data::Dumper::Useqq = 1;
+    local $Data::Dumper::Indent = 0;
+    local $Data::Dumper::Sortkeys = 0;
+    return Data::Dumper::Dumper(@_);
 }
 
 END {
