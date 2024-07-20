@@ -43,19 +43,25 @@ STDERR->autoflush(1);
 
 our $list;
 our @cmd;
-our @excludes;
 our @failures;
 our $width;
-our @includes;
 our $quiet = 0;
 our $inline = 0;
 our $cwd;
 our $plain;
 
+our @rules;
+our $has_includes;
+
 Getopt::Long::Configure('gnu_getopt', 'no_permute', 'no_ignore_case');
 Getopt::Long::GetOptions(
-    'include=s' => \@includes,
-    'exclude=s' => \@excludes,
+    'include=s' => sub {
+        push(@rules, { type => 'include', pattern => $_[1] });
+        $has_includes = 1;
+    },
+    'exclude=s' => sub {
+        push(@rules, { type => 'exclude', pattern => $_[1] });
+    },
     'l|list' => \$list,
     'w|width=i' => \$width,
     'q|quiet+' => \$quiet,
@@ -78,8 +84,11 @@ to specify directory trees:
 END
 
 # any --include or --exclude of the form /xxx/ becomes a regexp.
-@includes = map { m{^/(.*)/$} ? qr{\Q$1\E} : $_ } @includes;
-@excludes = map { m{^/(.*)/$} ? qr{\Q$1\E} : $_ } @excludes;
+foreach my $rule (@rules) {
+    if ($rule->{pattern} =~ m{^/(.*)/$}) {
+        $rule->{pattern} = qr{\Q$1\E};
+    }
+}
 
 # @cmd will contain arguments before \;\;
 while (scalar @ARGV) {
@@ -127,17 +136,21 @@ sub wanted {
     return $File::Find::prune = 1 if $_ eq 'git-find-logs';
     return $File::Find::prune = 1 if $_ eq 'node_modules';
     return $File::Find::prune = 1 if $_ eq 'vendor' && (-e 'composer.lock' || -e 'composer.json');
-    foreach my $pattern (@excludes) {
-        return $File::Find::prune = 1 if ref $pattern eq 'RegExp' && $_ =~ $pattern;
-        return $File::Find::prune = 1 if ref $pattern eq ''       && $_ eq $pattern;
-    }
-    if (scalar @includes) {
-        my $matched = 0;
-        foreach my $pattern (@includes) {
-            do { $matched = 1; last; } if ref $pattern eq 'RegExp' && $_ =~ $pattern;
-            do { $matched = 1; last; } if ref $pattern eq ''       && $_ eq $pattern;
+    my $match = $has_includes ? 0 : 1;
+    foreach my $rule (@rules) {
+        my $pattern = $rule->{pattern};
+        my $type = $rule->{type};
+        my $this_match = 0;
+        if (ref $pattern eq 'RegExp' && $_ =~ $pattern) {
+            $this_match = 1;
+        } elsif (ref $pattern eq '' && $_ eq $pattern) {
+            $this_match = 1;
         }
-        return $File::Find::prune = 1 if !$matched;
+        next if !$this_match;
+        $match = ($type eq 'include') ? 1 : 0;
+    }
+    if (!$match) {
+        return $File::Find::prune = 1;
     }
     if (-d "$_/.git") {
         if ($list) {
