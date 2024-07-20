@@ -127,8 +127,18 @@ sub wanted {
     return $File::Find::prune = 1 if $_ eq 'git-find-logs';
     return $File::Find::prune = 1 if $_ eq 'node_modules';
     return $File::Find::prune = 1 if $_ eq 'vendor' && (-e 'composer.lock' || -e 'composer.json');
-    return $File::Find::prune = 1 if excludes_filename($File::Find::name, @excludes);
-    return $File::Find::prune = 1 if !includes_filename($File::Find::name, @includes);
+    foreach my $pattern (@excludes) {
+        return $File::Find::prune = 1 if ref $pattern eq 'RegExp' && $_ =~ $pattern;
+        return $File::Find::prune = 1 if ref $pattern eq ''       && $_ eq $pattern;
+    }
+    if (scalar @includes) {
+        my $matched = 0;
+        foreach my $pattern (@includes) {
+            do { $matched = 1; last; } if ref $pattern eq 'RegExp' && $_ =~ $pattern;
+            do { $matched = 1; last; } if ref $pattern eq ''       && $_ eq $pattern;
+        }
+        return $File::Find::prune = 1 if !$matched;
+    }
     if (-d "$_/.git") {
         if ($list) {
             print($File::Find::name, "\n");
@@ -137,26 +147,6 @@ sub wanted {
         }
         return $File::Find::prune = 1;
     }
-}
-
-sub includes_filename {
-    my ($filename, @pattern) = @_;
-    return 1 if !scalar @pattern;
-    return any { filename_matches_pattern($filename, $_) } @pattern;
-}
-
-sub excludes_filename {
-    my ($filename, @pattern) = @_;
-    return 0 if !scalar @pattern;
-    return any { filename_matches_pattern($filename, $_) } @pattern;
-}
-
-sub filename_matches_pattern {
-    my ($filename, $pattern) = @_;
-    if (ref $pattern eq 'Regexp') {
-        return $filename =~ $pattern;
-    }
-    return $filename eq $pattern;
 }
 
 sub run_cmd {
