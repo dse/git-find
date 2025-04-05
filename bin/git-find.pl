@@ -19,7 +19,7 @@ use feature qw(state);
 use Data::Dumper qw(Dumper);
 
 use lib dirname(__FILE__) . "/../lib";
-use Git::Find qw(dumper finalize_rules indent);
+use Git::Find qw(dumper finalize_rules indent make_nonblocking);
 
 our $log_dir;
 our $old_log_dir;
@@ -339,12 +339,6 @@ sub print_header {
         $line = colored(['green'], $line) if $is_tty;
     }
     print($line . "\n");
-}
-
-sub make_nonblocking {
-    my ($handle) = @_;
-    my $flags = fcntl($handle, F_GETFL, 0) or die("fcntl: $!");
-    fcntl($handle, F_SETFL, $flags | O_NONBLOCK) or die("fcntl: $!\n");
 }
 
 sub print_usage {
