@@ -6,7 +6,7 @@ use List::Util qw(any);
 
 use base 'Exporter';
 our @EXPORT = qw();
-our @EXPORT_OK = qw(dumper finalize_rules);
+our @EXPORT_OK = qw(dumper finalize_rules indent);
 our %EXPORT_TAGS = (all => \@EXPORT_OK);
 
 sub dumper {
@@ -32,6 +32,12 @@ sub finalize_rules {
             $rule->{pattern} = qr{$regexp};
         }
     }
+}
+
+sub indent {
+    my ($str, $indent) = @_;
+    $str =~ s{^(?=.)}{$indent}gms;
+    return $str;
 }
 
 1;

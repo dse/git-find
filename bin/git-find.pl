@@ -19,7 +19,7 @@ use feature qw(state);
 use Data::Dumper qw(Dumper);
 
 use lib dirname(__FILE__) . "/../lib";
-use Git::Find qw(dumper finalize_rules);
+use Git::Find qw(dumper finalize_rules indent);
 
 our $log_dir;
 our $old_log_dir;
@@ -314,12 +314,6 @@ sub prefixed {
     return $str if !$inline;
     my $prefix = inline_prefix($name, $is_tty);
     $str =~ s{^(?=.)}{$prefix}gm;
-    return $str;
-}
-
-sub indent {
-    my ($str, $indent) = @_;
-    $str =~ s{^(?=.)}{$indent}gms;
     return $str;
 }
 
