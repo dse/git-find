@@ -119,6 +119,18 @@ $SIG{QUIT} = sub {
     exit();
 };
 
+my $options = {
+    list         => $list,
+    cmd          => \@cmd,
+    width        => $width,
+    quiet        => $quiet,
+    inline       => $inline,
+    cwd          => $cwd,
+    plain        => $plain,
+    rules        => \@rules,
+    has_includes => $has_includes,
+};
+
 our $exit_code = 0;
 
 find({ wanted => \&wanted }, @find_arguments);
