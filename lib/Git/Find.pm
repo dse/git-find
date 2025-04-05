@@ -6,7 +6,7 @@ use List::Util qw(any);
 
 use base 'Exporter';
 our @EXPORT = qw();
-our @EXPORT_OK = qw(dumper);
+our @EXPORT_OK = qw(dumper finalize_rules);
 our %EXPORT_TAGS = (all => \@EXPORT_OK);
 
 sub dumper {
@@ -15,6 +15,23 @@ sub dumper {
     local $Data::Dumper::Indent = 1;
     local $Data::Dumper::Sortkeys = 1;
     return Data::Dumper::Dumper(@_);
+}
+
+sub finalize_rules {
+    my @rules = @_;
+    foreach my $rule (@rules) {
+        my ($type, $pattern) = @$rule{qw(type pattern)};
+        if ($pattern =~ /^(?<whole>=)?\/(?<regexp>.*)\/(?<flags>[i]*)$/) {
+            my ($whole, $regexp, $flags) = @+{qw(whole regexp flags)};
+            if (defined $whole && $whole ne '') {
+                $regexp = sprintf("^%s\$", $regexp);
+            }
+            if (defined $flags && $flags ne '') {
+                $regexp = sprintf("(?%s:%s)", $flags, $regexp);
+            }
+            $rule->{pattern} = qr{$regexp};
+        }
+    }
 }
 
 1;

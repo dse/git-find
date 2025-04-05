@@ -19,7 +19,7 @@ use feature qw(state);
 use Data::Dumper qw(Dumper);
 
 use lib dirname(__FILE__) . "/../lib";
-use Git::Find qw(dumper);
+use Git::Find qw(dumper finalize_rules);
 
 our $log_dir;
 our $old_log_dir;
@@ -88,19 +88,7 @@ to specify directory trees:
 END
 
 # any --include or --exclude of the form /xxx/ becomes a regexp.
-foreach my $rule (@rules) {
-    my ($type, $pattern) = @$rule{qw(type pattern)};
-    if ($pattern =~ /^(?<whole>=)?\/(?<regexp>.*)\/(?<flags>[i]*)$/) {
-        my ($whole, $regexp, $flags) = @+{qw(whole regexp flags)};
-        if (defined $whole && $whole ne '') {
-            $regexp = sprintf("^%s\$", $regexp);
-        }
-        if (defined $flags && $flags ne '') {
-            $regexp = sprintf("(?%s:%s)", $flags, $regexp);
-        }
-        $rule->{pattern} = qr{$regexp};
-    }
-}
+finalize_rules(@rules);
 
 # @Cmd will contain arguments before \;\;
 while (scalar @ARGV) {
