@@ -21,17 +21,6 @@ use lib dirname(__FILE__) . "/../lib";
 use Git::Find qw(dumper finalize_rules indent);
 use Git::Find::Run qw(run_cmd see_error_log);
 
-my %sig_name;
-my %sig_num;
-{
-    my @sig_name = split(' ', $Config{sig_name});
-    my @sig_num = split(' ', $Config{sig_num});
-    for (my $i = 0; $i < scalar @sig_name && $i < scalar @sig_num; $i += 1) {
-        $sig_name{$sig_num[$i]} = $sig_name[$i];
-        $sig_num{$sig_name[$i]} = $sig_num[$i];
-    }
-}
-
 STDOUT->autoflush(1);
 STDERR->autoflush(1);
 
