@@ -18,6 +18,9 @@ use Config;
 use feature qw(state);
 use Data::Dumper qw(Dumper);
 
+use lib dirname(__FILE__) . "/../lib";
+use Git::Find qw(dumper);
+
 our $log_dir;
 our $old_log_dir;
 our $log_symlink;
@@ -440,14 +443,6 @@ sub log_cleanup {
     closedir($dh);
     rmdir($old_log_dir);
     $! = undef;
-}
-
-sub dumper {
-    local $Data::Dumper::Terse = 1;
-    local $Data::Dumper::Useqq = 1;
-    local $Data::Dumper::Indent = 0;
-    local $Data::Dumper::Sortkeys = 0;
-    return Data::Dumper::Dumper(@_);
 }
 
 END {
