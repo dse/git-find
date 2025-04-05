@@ -1,17 +1,36 @@
 package Git::Find::Run;
 use warnings;
 use strict;
+use feature qw(state);
+
+use Fcntl;
+use Term::ANSIColor;
+use Scalar::Util qw(refaddr);
+use File::Path qw(make_path);
+use File::Temp qw(tempfile);
 
 use base 'Exporter';
-our @EXPORT = qw(run_cmd);
+our @EXPORT = qw(run_cmd see_error_log);
 our %EXPORT_TAGS = qw();
 
 our $inline;
 our $quiet;
 our @cmd;
+our $plain;
+our $log_dir;
+our $old_log_dir;
+our $log_symlink;
+
+BEGIN {
+    my $state_home = $ENV{XDG_STATE_HOME} // "$ENV{HOME}/.local/state";
+    $log_dir = "${state_home}/git-find/log";
+    $old_log_dir = "git-find-logs";
+    $log_symlink = "${log_dir}/latest.log";
+}
 
 sub run_cmd {
     my ($dir, $name) = @_;
+    my @saved_autoflush = set_autoflush();
 
     my $log = '';
     my $err = '';
@@ -142,6 +161,105 @@ sub run_cmd {
         print $fh $log;
         print $fh $err;
     }
+
+    restore_autoflush(@saved_autoflush);
+}
+
+sub set_autoflush {
+    my $stdout_autoflush;
+    my $stderr_autoflush;
+    my $select = select(STDOUT);
+    $stdout_autoflush = $|;
+    $| = 1;
+    select(STDERR);
+    $stderr_autoflush = $|;
+    $| = 1;
+    select($select);
+    return ($stdout_autoflush, $stderr_autoflush) if wantarray;
+    return [$stdout_autoflush, $stderr_autoflush];
+}
+
+sub restore_autoflush {
+    my ($stdout_autoflush, $stderr_autoflush) = @_;
+    my $select = select(STDOUT);
+    $| = $stdout_autoflush;
+    select(STDERR);
+    $| = $stderr_autoflush;
+    select($select);
+}
+
+our $error_log_filename;
+our $symlink_valid;
+
+sub open_error_log {
+    state $fh;
+    return $fh if $fh;
+    log_cleanup();
+    my $time = time();
+    ($fh, $error_log_filename) = tempfile("${time}-XXXXXXXXXXXXXXXX",
+                                          DIR => $log_dir,
+                                          SUFFIX => ".log");
+    if (-e $log_symlink) {
+        unlink($log_symlink) or warn("$log_symlink: $!");
+    }
+    if (!-e $log_symlink) {
+        if (symlink($error_log_filename, $log_symlink)) {
+            $symlink_valid = 1;
+        } else {
+            warn("$log_symlink: $!");
+        }
+    }
+    return $fh;
+}
+
+sub see_error_log {
+    return if !defined $error_log_filename;
+    state %printed;
+    return if $printed{$error_log_filename}++;
+    printf STDERR ("\nSome runs failed; see %s\n", $error_log_filename);
+    if ($symlink_valid) {
+        printf STDERR (  "                  aka %s\n", $log_symlink);
+    }
+}
+
+sub log_cleanup {
+    make_path($log_dir);
+    my $dh;
+    opendir($dh, $old_log_dir) or do { $! = undef; return; };
+    while (defined(my $filename = readdir($dh))) {
+        next if $filename eq '.' || $filename eq '..';
+        my $pathname = "$old_log_dir/$filename";
+        my $new_pathname = "$log_dir/$filename";
+        if (!lstat($pathname)) {
+            next;
+        }
+        if (-l _ || -p _ || -S _ || -b _ || -c _) {
+            unlink($pathname);
+            next;
+        }
+        rename($pathname, $new_pathname) or warn("$pathname => $new_pathname: $!");
+    }
+    closedir($dh);
+    rmdir($old_log_dir);
+    $! = undef;
+}
+
+sub print_header {
+    my ($name, $is_tty) = @_;
+    my $line;
+    if ($plain) {
+        $line = sprintf("%s", $name);
+    } else {
+        $line = sprintf("==> %s <==", $name);
+        $line = colored(['green'], $line) if $is_tty;
+    }
+    print($line . "\n");
+}
+
+sub make_nonblocking {
+    my ($handle) = @_;
+    my $flags = fcntl($handle, F_GETFL, 0) or die("fcntl: $!");
+    fcntl($handle, F_SETFL, $flags | O_NONBLOCK) or die("fcntl: $!\n");
 }
 
 1;

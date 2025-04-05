@@ -6,7 +6,6 @@ use IO::Handle;
 use Fcntl;
 use Term::ANSIColor;
 use IO::Select;
-use Scalar::Util qw(refaddr);
 use List::Util qw(all any);
 use Getopt::Long;
 use Fcntl qw(F_GETFL F_SETFL O_NONBLOCK);
@@ -19,18 +18,8 @@ use feature qw(state);
 use Data::Dumper qw(Dumper);
 
 use lib dirname(__FILE__) . "/../lib";
-use Git::Find qw(dumper finalize_rules indent make_nonblocking);
-use Git::Find::Run qw(run_cmd);
-
-our $log_dir;
-our $old_log_dir;
-our $log_symlink;
-{
-    my $state_home = $ENV{XDG_STATE_HOME} // "$ENV{HOME}/.local/state";
-    $log_dir = "${state_home}/git-find/log";
-    $old_log_dir = "git-find-logs";
-    $log_symlink = "${log_dir}/latest.log";
-}
+use Git::Find qw(dumper finalize_rules indent);
+use Git::Find::Run qw(run_cmd see_error_log);
 
 my %sig_name;
 my %sig_num;
@@ -144,6 +133,7 @@ sub wanted {
     local $Git::Find::Run::inline = $options->{inline};
     local $Git::Find::Run::quiet = $options->{quiet};
     local @Git::Find::Run::cmd = @cmd;
+    local $Git::Find::Run::plain = $options->{plain};
 
     my @stat = lstat($_);
     return if !scalar(@stat);
@@ -202,18 +192,6 @@ sub prefixed {
     return $str;
 }
 
-sub print_header {
-    my ($name, $is_tty) = @_;
-    my $line;
-    if ($plain) {
-        $line = sprintf("%s", $name);
-    } else {
-        $line = sprintf("==> %s <==", $name);
-        $line = colored(['green'], $line) if $is_tty;
-    }
-    print($line . "\n");
-}
-
 sub print_usage {
     my ($usage) = @_;
     my $TWO_STARS = qr{(?<!\*)\*\*(?!\*)};
@@ -248,62 +226,6 @@ sub green {
 sub blue_bg {
     return join("", @_) if !-t 1;
     return vt("\e[44m" . join("", @_) . "\e[49m");
-}
-
-our $error_log_filename;
-our $symlink_valid;
-
-sub open_error_log {
-    state $fh;
-    return $fh if $fh;
-    log_cleanup();
-    my $time = time();
-    ($fh, $error_log_filename) = tempfile("${time}-XXXXXXXXXXXXXXXX",
-                                          DIR => $log_dir,
-                                          SUFFIX => ".log");
-    if (-e $log_symlink) {
-        unlink($log_symlink) or warn("$log_symlink: $!");
-    }
-    if (!-e $log_symlink) {
-        if (symlink($error_log_filename, $log_symlink)) {
-            $symlink_valid = 1;
-        } else {
-            warn("$log_symlink: $!");
-        }
-    }
-    return $fh;
-}
-
-sub see_error_log {
-    return if !defined $error_log_filename;
-    state %printed;
-    return if $printed{$error_log_filename}++;
-    printf STDERR ("\nSome runs failed; see %s\n", $error_log_filename);
-    if ($symlink_valid) {
-        printf STDERR (  "                  aka %s\n", $log_symlink);
-    }
-}
-
-sub log_cleanup {
-    make_path($log_dir);
-    my $dh;
-    opendir($dh, $old_log_dir) or do { $! = undef; return; };
-    while (defined(my $filename = readdir($dh))) {
-        next if $filename eq '.' || $filename eq '..';
-        my $pathname = "$old_log_dir/$filename";
-        my $new_pathname = "$log_dir/$filename";
-        if (!lstat($pathname)) {
-            next;
-        }
-        if (-l _ || -p _ || -S _ || -b _ || -c _) {
-            unlink($pathname);
-            next;
-        }
-        rename($pathname, $new_pathname) or warn("$pathname => $new_pathname: $!");
-    }
-    closedir($dh);
-    rmdir($old_log_dir);
-    $! = undef;
 }
 
 END {

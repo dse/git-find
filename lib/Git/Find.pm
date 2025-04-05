@@ -7,7 +7,7 @@ use Fcntl;
 
 use base 'Exporter';
 our @EXPORT = qw();
-our @EXPORT_OK = qw(dumper finalize_rules indent make_nonblocking);
+our @EXPORT_OK = qw(dumper finalize_rules indent);
 our %EXPORT_TAGS = (all => \@EXPORT_OK);
 
 sub dumper {
@@ -39,12 +39,6 @@ sub indent {
     my ($str, $indent) = @_;
     $str =~ s{^(?=.)}{$indent}gms;
     return $str;
-}
-
-sub make_nonblocking {
-    my ($handle) = @_;
-    my $flags = fcntl($handle, F_GETFL, 0) or die("fcntl: $!");
-    fcntl($handle, F_SETFL, $flags | O_NONBLOCK) or die("fcntl: $!\n");
 }
 
 1;
