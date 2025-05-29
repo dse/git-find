@@ -3,15 +3,20 @@ use warnings;
 use strict;
 use feature qw(state);
 
+use File::Basename qw(dirname);
 use Fcntl;
 use Term::ANSIColor;
 use Scalar::Util qw(refaddr);
 use File::Path qw(make_path);
 use File::Temp qw(tempfile);
+use POSIX qw(dup2);
 
 use base 'Exporter';
 our @EXPORT = qw(run_cmd see_error_log);
 our %EXPORT_TAGS = qw();
+
+use lib dirname(__FILE__) . "/../..";
+use Git::Find qw(dumper finalize_rules indent);
 
 our $inline;
 our $quiet;
@@ -20,6 +25,7 @@ our $plain;
 our $log_dir;
 our $old_log_dir;
 our $log_symlink;
+our $width;
 
 BEGIN {
     my $state_home = $ENV{XDG_STATE_HOME} // "$ENV{HOME}/.local/state";
@@ -260,6 +266,26 @@ sub make_nonblocking {
     my ($handle) = @_;
     my $flags = fcntl($handle, F_GETFL, 0) or die("fcntl: $!");
     fcntl($handle, F_SETFL, $flags | O_NONBLOCK) or die("fcntl: $!\n");
+}
+
+sub prefixed {
+    my ($str, $name, $is_tty) = @_;
+    return $str if !$inline;
+    my $prefix = inline_prefix($name, $is_tty);
+    $str =~ s{^(?=.)}{$prefix}gm;
+    return $str;
+}
+
+sub inline_prefix {
+    my ($name, $is_tty) = @_;
+    if ($plain) {
+        return sprintf("%-*s ", $width, $name) if $width;
+        return sprintf("%s ", $name);
+    }
+    my $prefix = sprintf('[%s] ', $name);
+    $prefix = sprintf("%-*s", $width, $prefix) if $width;
+    $prefix = colored(['green'], $prefix) if $is_tty;
+    return $prefix;
 }
 
 1;
