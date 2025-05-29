@@ -52,11 +52,11 @@ sub run_cmd {
         chdir($dir) or die("chdir: $!");
         open(STDOUT, '>&', $stdout_write) or die("reopen: $!");
         open(STDERR, '>&', $stderr_write) or die("reopen: $!");
-        binmode($stdout_write);  # for syswrites
+        binmode($stdout_write); # for syswrites
         binmode($stderr_write);
         exec(@cmd) or die("exec failed: $!");
     }
-    binmode($stdout_read);       # for sysreads
+    binmode($stdout_read);      # for sysreads
     binmode($stderr_read);
     close($stderr_write) or die("close: $!");
     close($stdout_write) or die("close: $!");
@@ -77,14 +77,16 @@ sub run_cmd {
         print STDERR prefixed($str, $name, -t 2);
         $log .= indent($str, '  !!! > ');
     };
-    # my $stderr = '';            # store for printing errors atexit
     my $failed;
-    do {
+    while (1) {
         $! = 0;                 # clear error
         my @ready = $select->can_read();
         $has_stdout = grep { refaddr($_) == refaddr($stdout_read) } @ready;
         $has_stderr = grep { refaddr($_) == refaddr($stderr_read) } @ready;
-        while ($has_stdout) {
+        if (!$has_stdout && !$has_stderr) {
+            last;
+        }
+        if ($has_stdout) {
             my $data;
             my $bytes = sysread($stdout_read, $data, 4096);
             if (!defined $bytes) {
@@ -112,7 +114,7 @@ sub run_cmd {
                 &$stdout($&);
             }
         }
-        while ($has_stderr) {
+        if ($has_stderr) {
             my $data;
             my $bytes = sysread($stderr_read, $data, 4096);
             if (!defined $bytes) {
@@ -140,7 +142,8 @@ sub run_cmd {
                 &$stderr($&);
             }
         }
-    } while ($has_stdout || $has_stderr);
+    }
+    ;
     if ($buf_stdout ne '' || $buf_stderr ne '') {
         print_header($name, -t 1) if $quiet == 1 && !$inline && !$printed_header++;
         if ($buf_stdout ne '') {
@@ -260,7 +263,7 @@ sub print_header {
         $line = colored(['green'], $line) if $is_tty;
     }
     print($line . "\n");
-}
+};
 
 sub make_nonblocking {
     my ($handle) = @_;
