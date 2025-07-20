@@ -32,6 +32,7 @@ our $quiet = 0;
 our $inline = 0;
 our $cwd;
 our $plain;
+our $indent = 0;
 
 our @rules;
 our $has_includes;
@@ -51,6 +52,7 @@ Getopt::Long::GetOptions(
     'i|inline+' => \$inline,
     'C|cwd=s' => \$cwd,
     'p|plain' => \$plain,
+    'indent=i' => \$indent,
     'help' => sub { usage(); exit(0); },
 ) or die();
 
@@ -65,9 +67,6 @@ to list repositories:
 to specify directory trees:
     git find [<options> ...] [git] <cmd> [<arg> ...] ***\\\;\\\; <dir> ...***
 END
-
-# any --include or --exclude of the form /xxx/ becomes a regexp.
-finalize_rules(@rules);
 
 # @Cmd will contain arguments before \;\;
 while (scalar @ARGV) {
@@ -108,7 +107,11 @@ my $options = {
     plain        => $plain,
     rules        => \@rules,
     has_includes => $has_includes,
+    indent       => $indent,
 };
+
+# any --include or --exclude of the form /xxx/ becomes a regexp.
+finalize_rules(@rules);
 
 our $exit_code = 0;
 
@@ -123,6 +126,8 @@ sub wanted {
     local $Git::Find::Run::quiet = $options->{quiet};
     local @Git::Find::Run::cmd = @cmd;
     local $Git::Find::Run::plain = $options->{plain};
+    local $Git::Find::Run::width = $options->{width};
+    local $Git::Find::Run::indent = $options->{indent};
 
     my @stat = lstat($_);
     return if !scalar(@stat);
@@ -159,26 +164,6 @@ sub wanted {
         }
         return $File::Find::prune = 1;
     }
-}
-
-sub inline_prefix {
-    my ($name, $is_tty) = @_;
-    if ($plain) {
-        return sprintf("%-*s ", $width, $name) if $width;
-        return sprintf("%s ", $name);
-    }
-    my $prefix = sprintf('[%s] ', $name);
-    $prefix = sprintf("%-*s", $width, $prefix) if $width;
-    $prefix = colored(['green'], $prefix) if $is_tty;
-    return $prefix;
-}
-
-sub prefixed {
-    my ($str, $name, $is_tty) = @_;
-    return $str if !$inline;
-    my $prefix = inline_prefix($name, $is_tty);
-    $str =~ s{^(?=.)}{$prefix}gm;
-    return $str;
 }
 
 sub print_usage {

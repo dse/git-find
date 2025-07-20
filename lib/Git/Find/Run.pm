@@ -26,6 +26,7 @@ our $log_dir;
 our $old_log_dir;
 our $log_symlink;
 our $width;
+our $indent;
 
 BEGIN {
     my $state_home = $ENV{XDG_STATE_HOME} // "$ENV{HOME}/.local/state";
@@ -69,12 +70,12 @@ sub run_cmd {
     my $buf_stderr = '';
     my $stdout = sub {
         my $str = join('', @_);
-        print STDOUT prefixed($str, $name, -t 1);
+        print STDOUT indent(prefixed($str, $name, -t 1), ' ' x $indent);
         $log .= indent($str, '      > ');
     };
     my $stderr = sub {
         my $str = join('', @_);
-        print STDERR prefixed($str, $name, -t 2);
+        print STDERR indent(prefixed($str, $name, -t 2), ' ' x $indent);
         $log .= indent($str, '  !!! > ');
     };
     my $failed;
@@ -143,14 +144,19 @@ sub run_cmd {
             }
         }
     }
-    ;
     if ($buf_stdout ne '' || $buf_stderr ne '') {
         print_header($name, -t 1) if $quiet == 1 && !$inline && !$printed_header++;
         if ($buf_stdout ne '') {
+            if ($indent) {
+                $buf_stdout =~ s{^(?![\r\n])}{' ' x $indent}meg;
+            }
             $buf_stdout .= "\n" if $buf_stdout !~ m{\R\z}; # make sure output ends with newline
             &$stdout($buf_stdout);
         }
         if ($buf_stderr ne '') {
+            if ($indent) {
+                $buf_stderr =~ s{^(?![\r\n])}{' ' x $indent}meg;
+            }
             $buf_stderr .= "\n" if $buf_stderr !~ m{\R\z};
             &$stderr($buf_stderr);
         }
