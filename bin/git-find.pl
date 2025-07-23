@@ -115,7 +115,10 @@ finalize_rules(@rules);
 
 our $exit_code = 0;
 
-find({ wanted => \&wanted }, @find_arguments);
+find({
+    wanted => \&wanted,
+    preprocess => sub { return sort @_; },
+}, @find_arguments);
 
 exit($exit_code);
 
