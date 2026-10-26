@@ -19,7 +19,8 @@ use lib dirname(__FILE__) . "/../..";
 use Git::Find qw(dumper finalize_rules indent);
 
 our $inline;
-our $quiet;
+our $quiet;                     # 1 = print headers only if there's
+                                # output; 2 = no headers at all
 our @cmd;
 our $plain;
 our $log_dir;
@@ -27,6 +28,7 @@ our $old_log_dir;
 our $log_symlink;
 our $width;
 our $indent;
+our $color;
 
 BEGIN {
     my $state_home = $ENV{XDG_STATE_HOME} // "$ENV{HOME}/.local/state";
@@ -44,7 +46,7 @@ sub run_cmd {
     my $start = time();
 
     my $printed_header = 0;
-    print_header($name, -t 1) if !$quiet && !$inline && !$printed_header++;
+    print_header($name, !no_color()) if !$quiet && !$inline && !$printed_header++;
     my ($stdout_read, $stdout_write, $stderr_read, $stderr_write);
     pipe($stdout_read, $stdout_write) or die("pipe: $!");
     pipe($stderr_read, $stderr_write) or die("pipe: $!");
@@ -70,12 +72,12 @@ sub run_cmd {
     my $buf_stderr = '';
     my $stdout = sub {
         my $str = join('', @_);
-        print STDOUT indent(prefixed($str, $name, -t 1), ' ' x $indent);
+        print STDOUT indent(prefixed($str, $name, !no_color()), ' ' x $indent);
         $log .= indent($str, '      > ');
     };
     my $stderr = sub {
         my $str = join('', @_);
-        print STDERR indent(prefixed($str, $name, -t 2), ' ' x $indent);
+        print STDERR indent(prefixed($str, $name, !no_color(\*STDERR)), ' ' x $indent);
         $log .= indent($str, '  !!! > ');
     };
     my $failed;
@@ -111,7 +113,7 @@ sub run_cmd {
             }
             $buf_stdout .= $data;
             if ($buf_stdout =~ s{^.*\R}{}s) {
-                print_header($name, -t 1) if $quiet == 1 && !$inline && !$printed_header++;
+                print_header($name, !no_color()) if $quiet == 1 && !$inline && !$printed_header++;
                 &$stdout($&);
             }
         }
@@ -139,13 +141,13 @@ sub run_cmd {
             }
             $buf_stderr .= $data;
             if ($buf_stderr =~ s{^.*\R}{}s) {
-                print_header($name, -t 1) if $quiet == 1 && !$inline && !$printed_header++;
+                print_header($name, !no_color()) if $quiet == 1 && !$inline && !$printed_header++;
                 &$stderr($&);
             }
         }
     }
     if ($buf_stdout ne '' || $buf_stderr ne '') {
-        print_header($name, -t 1) if $quiet == 1 && !$inline && !$printed_header++;
+        print_header($name, !no_color()) if $quiet == 1 && !$inline && !$printed_header++;
         if ($buf_stdout ne '') {
             if ($indent) {
                 $buf_stdout =~ s{^(?![\r\n])}{' ' x $indent}meg;
@@ -295,6 +297,17 @@ sub inline_prefix {
     $prefix = sprintf("%-*s", $width, $prefix) if $width;
     $prefix = colored(['green'], $prefix) if $is_tty;
     return $prefix;
+}
+
+sub no_color {
+    my $fh = shift // \*STDOUT;
+    if ($color eq "no") {
+        return 1;
+    }
+    if ($color ne "always" && !-t fileno($fh)) {
+        return 1;
+    }
+    return;
 }
 
 1;

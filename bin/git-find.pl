@@ -35,6 +35,7 @@ our $inline = 0;
 our $cwd;
 our $plain;
 our $indent = 0;
+our $color = "auto";
 
 our @rules;
 our $has_includes;
@@ -55,27 +56,30 @@ Getopt::Long::GetOptions(
     'i|inline+' => \$inline,
     'C|cwd=s' => \$cwd,
     'p|plain' => \$plain,
+    'color:s' => \$color,
     'indent=i' => \$indent,
     'help' => sub { usage(); exit(0); },
 ) or die();
 
 sub usage { print_usage(<<"END"); }
-to run a git (or other) command in all repositories:
-    git find [--include=<glob> ...]
-             [--exclude=<glob> ...]
-             [-l, --list]
-             [-w, --width=<cols>]
-             [-q, --quiet]
+to run a git command in all repositories in current directory's tree
+    git find [--include=<glob> ...] [--exclude=<glob> ...]
+             [-l, --list]           just list repositories (default operation)
+             [-w, --width=<cols>] [--indent=<cols>]
+             [-q, --quiet]          only print headers if there is output
              [-H, --no-header, -qq, --quiet --quiet]
+                                    don't print headers at all
              [-i, --inline]
              [-C, --cwd=<dir>]
              [-p, --plain]
-             [--indent=<cols>]
-             [git] <cmd> [<arg> ...]
+
+             git <cmd> [<arg> ...]
+to run a non-git command:
+    git find [<options> ...] <other-cmd> [<arg> ...]
 to list repositories:
     git find [<options> ...]
     git find [<options> ...] ***--list***
-to specify directory trees:
+to specify one or more directory trees to find projects in:
     git find [<options> ...] [git] <cmd> [<arg> ...] ***\\\;\\\; <dir> ...***
 END
 
@@ -119,6 +123,7 @@ my $options = {
     rules        => \@rules,
     has_includes => $has_includes,
     indent       => $indent,
+    color        => $color,
 };
 
 # any --include or --exclude of the form /xxx/ becomes a regexp.
@@ -142,6 +147,7 @@ sub wanted {
     local $Git::Find::Run::plain = $options->{plain};
     local $Git::Find::Run::width = $options->{width};
     local $Git::Find::Run::indent = $options->{indent};
+    local $Git::Find::Run::color  = $options->{color};
 
     my @stat = lstat($_);
     return if !scalar(@stat);
@@ -187,7 +193,7 @@ sub print_usage {
     $usage =~ s{^to .*$}
                {green($&)}ge;
     $usage =~ s{<(\S+)>}
-               {!-t 1 ? $& : green(italic($1))}ge;
+               {no_color() ? $& : green(italic($1))}ge;
     $usage =~ s{${TWO_STARS}(.*?)${TWO_STARS}}
                {bold($1)}ge;
     $usage =~ s{${THREE_STARS}(.*?)${THREE_STARS}}
@@ -195,25 +201,39 @@ sub print_usage {
     print($usage);
 }
 
-sub vt {
-    return join("", @_) if !-t 1;
-    return "\e[#{" . join("", @_) . "\e[#}";
+sub no_color {
+    if ($color eq "no") {
+        return 1;
+    }
+    if ($color ne "always" && !-t 1) {
+        return 1;
+    }
+    return;
 }
+
 sub bold {
-    return join("", @_) if !-t 1;
-    return vt("\e[1m" . join("", @_) . "\e[22m");
+    if (no_color()) {
+        return join("", @_);
+    }
+    return "\e[1m" . join("", @_) . "\e[m";
 }
 sub italic {
-    return join("", @_) if !-t 1;
-    return vt("\e[3m" . join("", @_) . "\e[23m");
+    if (no_color()) {
+        return join("", @_);
+    }
+    return "\e[3m" . join("", @_) . "\e[m";
 }
 sub green {
-    return join("", @_) if !-t 1;
-    return vt("\e[32m" . join("", @_) . "\e[39m");
+    if (no_color()) {
+        return join("", @_);
+    }
+    return "\e[32m" . join("", @_) . "\e[m";
 }
 sub blue_bg {
-    return join("", @_) if !-t 1;
-    return vt("\e[44m" . join("", @_) . "\e[49m");
+    if (no_color()) {
+        return join("", @_);
+    }
+    return "\e[44m" . join("", @_) . "\e[m";
 }
 
 END {
