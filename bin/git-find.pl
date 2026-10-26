@@ -17,7 +17,9 @@ use Config;
 use feature qw(state);
 use Data::Dumper qw(Dumper);
 
-use lib dirname(__FILE__) . "/../lib";
+use FindBin;
+
+use lib "${FindBin::Bin}/../lib";
 use Git::Find qw(dumper finalize_rules indent);
 use Git::Find::Run qw(run_cmd see_error_log);
 
@@ -33,6 +35,7 @@ our $inline = 0;
 our $cwd;
 our $plain;
 our $indent = 0;
+our $no_header = 0;
 
 our @rules;
 our $has_includes;
@@ -53,6 +56,7 @@ Getopt::Long::GetOptions(
     'C|cwd=s' => \$cwd,
     'p|plain' => \$plain,
     'indent=i' => \$indent,
+    'H|no-header' => \$no_header,
     'help' => sub { usage(); exit(0); },
 ) or die();
 
