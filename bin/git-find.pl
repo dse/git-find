@@ -35,7 +35,6 @@ our $inline = 0;
 our $cwd;
 our $plain;
 our $indent = 0;
-our $no_header = 0;
 
 our @rules;
 our $has_includes;
@@ -52,22 +51,30 @@ Getopt::Long::GetOptions(
     'l|list' => \$list,
     'w|width=i' => \$width,
     'q|quiet+' => \$quiet,
+    'H|no-header' => sub { $quiet = 2; },
     'i|inline+' => \$inline,
     'C|cwd=s' => \$cwd,
     'p|plain' => \$plain,
     'indent=i' => \$indent,
-    'H|no-header' => \$no_header,
     'help' => sub { usage(); exit(0); },
 ) or die();
 
 sub usage { print_usage(<<"END"); }
 to run a git (or other) command in all repositories:
-    git find [--include=<glob> ...] [--exclude=<glob> ...]
-             [--quiet]
-             [--inline] [-w, --width=<cols>]
+    git find [--include=<glob> ...]
+             [--exclude=<glob> ...]
+             [-l, --list]
+             [-w, --width=<cols>]
+             [-q, --quiet]
+             [-H, --no-header, -qq, --quiet --quiet]
+             [-i, --inline]
+             [-C, --cwd=<dir>]
+             [-p, --plain]
+             [--indent=<cols>]
              [git] <cmd> [<arg> ...]
 to list repositories:
-    git find [<options> ...] ***-l|--list***
+    git find [<options> ...]
+    git find [<options> ...] ***--list***
 to specify directory trees:
     git find [<options> ...] [git] <cmd> [<arg> ...] ***\\\;\\\; <dir> ...***
 END
