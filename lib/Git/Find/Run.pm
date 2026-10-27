@@ -64,8 +64,13 @@ sub run_cmd {
     close($stderr_write) or die("close: $!");
     close($stdout_write) or die("close: $!");
     my $select = IO::Select->new($stdout_read, $stderr_read);
-    make_nonblocking($stdout_read);
-    make_nonblocking($stderr_read);
+
+    my $flags;
+    $flags = fcntl($stdout_read, F_GETFL, 0) or die("fcntl: $!");
+    fcntl($stdout_read, F_SETFL, $flags | O_NONBLOCK) or die("fcntl: $!\n");
+    $flags = fcntl($stderr_read, F_GETFL, 0) or die("fcntl: $!");
+    fcntl($stderr_read, F_SETFL, $flags | O_NONBLOCK) or die("fcntl: $!\n");
+
     my $has_stdout;
     my $has_stderr;
     my $buf_stdout = '';
@@ -276,12 +281,6 @@ sub print_header {
     }
     print($line . "\n");
 };
-
-sub make_nonblocking {
-    my ($handle) = @_;
-    my $flags = fcntl($handle, F_GETFL, 0) or die("fcntl: $!");
-    fcntl($handle, F_SETFL, $flags | O_NONBLOCK) or die("fcntl: $!\n");
-}
 
 sub prefixed {
     my ($str, $name, $is_tty) = @_;
