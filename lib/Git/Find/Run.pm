@@ -45,9 +45,15 @@ sub run_cmd {
     my $err = '';
     my $start = time();
 
-    my $printed_header = 0;
-    print_header($name, !no_color()) if !$quiet && !$inline && !$printed_header++;
+    my $printed_header;
+    my $print_header = sub {
+        return if $printed_header;
+        $printed_header = 1;
+        print_header($name, !no_color()) if !$inline;
+    };
+
     my ($stdout_read, $stdout_write, $stderr_read, $stderr_write);
+    &$print_header() if !$quiet;
     pipe($stdout_read, $stdout_write) or die("pipe: $!");
     pipe($stderr_read, $stderr_write) or die("pipe: $!");
     my $pid = fork() // die("fork: $!");
@@ -130,7 +136,7 @@ sub run_cmd {
             } else {
                 $buf_stdout .= $data;
                 if ($buf_stdout =~ s{^.*\R}{}s) {
-                    print_header($name, !no_color()) if $quiet == 1 && !$inline && !$printed_header++;
+                    &$print_header() if $quiet == 1;
                     &$stdout($&);
                 }
             }
@@ -159,14 +165,14 @@ sub run_cmd {
             } else {
                 $buf_stderr .= $data;
                 if ($buf_stderr =~ s{^.*\R}{}s) {
-                    print_header($name, !no_color()) if $quiet == 1 && !$inline && !$printed_header++;
+                    &$print_header() if $quiet == 1;
                     &$stderr($&);
                 }
             }
         }
     }
     if ($buf_stdout ne '' || $buf_stderr ne '') {
-        print_header($name, !no_color()) if $quiet == 1 && !$inline && !$printed_header++;
+        &$print_header() if $quiet == 1;
         if ($buf_stdout ne '') {
             if ($indent) {
                 $buf_stdout =~ s{^(?![\r\n])}{' ' x $indent}meg;
