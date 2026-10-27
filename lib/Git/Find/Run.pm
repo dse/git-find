@@ -114,8 +114,7 @@ sub run_cmd {
                 if (!$!{EAGAIN}) {
                     $err .= "  sysread stdout: $!\n";
                 }
-            }
-            if (!$bytes) {
+            } elsif (!$bytes) {
                 if (!close($stdout_read)) {
                     if ($!) {
                         $err .= "  close stdout: $!\n";
@@ -128,12 +127,12 @@ sub run_cmd {
                 }
                 $has_stdout = 0;
                 $select->remove($stdout_read);
-                last;
-            }
-            $buf_stdout .= $data;
-            if ($buf_stdout =~ s{^.*\R}{}s) {
-                print_header($name, !no_color()) if $quiet == 1 && !$inline && !$printed_header++;
-                &$stdout($&);
+            } else {
+                $buf_stdout .= $data;
+                if ($buf_stdout =~ s{^.*\R}{}s) {
+                    print_header($name, !no_color()) if $quiet == 1 && !$inline && !$printed_header++;
+                    &$stdout($&);
+                }
             }
         }
         if ($has_stderr) {
@@ -144,8 +143,7 @@ sub run_cmd {
                 if (!$!{EAGAIN}) {
                     $err .= "  sysread stderr: $!\n";
                 }
-            }
-            if (!$bytes) {
+            } elsif (!$bytes) {
                 if (!close($stderr_read)) {
                     if ($!) {
                         $err .= "  close stderr: $!\n";
@@ -158,12 +156,12 @@ sub run_cmd {
                 }
                 $has_stderr = 0;
                 $select->remove($stderr_read);
-                last;
-            }
-            $buf_stderr .= $data;
-            if ($buf_stderr =~ s{^.*\R}{}s) {
-                print_header($name, !no_color()) if $quiet == 1 && !$inline && !$printed_header++;
-                &$stderr($&);
+            } else {
+                $buf_stderr .= $data;
+                if ($buf_stderr =~ s{^.*\R}{}s) {
+                    print_header($name, !no_color()) if $quiet == 1 && !$inline && !$printed_header++;
+                    &$stderr($&);
+                }
             }
         }
     }
