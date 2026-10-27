@@ -104,6 +104,7 @@ sub run_cmd {
         print STDERR indent(prefixed($str, $name, !no_color(\*STDERR)), ' ' x $indent);
         $log .= indent($str, '  !!! > ');
     };
+
     while (1) {
         $! = 0;                 # clear error
         my @ready = $select->can_read();
