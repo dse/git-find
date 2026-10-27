@@ -65,6 +65,9 @@ sub run_cmd {
     close($stdout_write) or die("close: $!");
     my $select = IO::Select->new($stdout_read, $stderr_read);
 
+    # Make the filehandles non-blocking so that if reading one of them
+    # returns EAGAIN, we read the other right away.  This should
+    # actually never occur, so this is for good measure.
     my $flags;
     $flags = fcntl($stdout_read, F_GETFL, 0) or die("fcntl: $!");
     fcntl($stdout_read, F_SETFL, $flags | O_NONBLOCK) or die("fcntl: $!\n");
