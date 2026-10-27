@@ -76,8 +76,18 @@ sub run_cmd {
 
     my $has_stdout;
     my $has_stderr;
+
+    # Data from the sysread calls on the two filehandles gets appended
+    # to these.  These are line buffers.  After each read, data is
+    # appended to each buffer; data up to the last newline is printed
+    # and removed; any remaining data is the start of the next line of
+    # input.  This allows us to mix stdout and stderr more gracefully
+    # if both are ttys (or both are redirected to the same file).
     my $buf_stdout = '';
     my $buf_stderr = '';
+
+    # Routines for (possibly pretty-)printing data from the child's
+    # stdout and stderr.
     my $stdout = sub {
         my $str = join('', @_);
         print STDOUT indent(prefixed($str, $name, !no_color()), ' ' x $indent);
@@ -88,7 +98,6 @@ sub run_cmd {
         print STDERR indent(prefixed($str, $name, !no_color(\*STDERR)), ' ' x $indent);
         $log .= indent($str, '  !!! > ');
     };
-    my $failed;
     while (1) {
         $! = 0;                 # clear error
         my @ready = $select->can_read();
