@@ -68,11 +68,11 @@ sub run_cmd {
     # Make the filehandles non-blocking so that if reading one of them
     # returns EAGAIN, we read the other right away.  This should
     # actually never occur, so this is for good measure.
-    my $flags;
-    $flags = fcntl($stdout_read, F_GETFL, 0) or die("fcntl: $!");
-    fcntl($stdout_read, F_SETFL, $flags | O_NONBLOCK) or die("fcntl: $!\n");
-    $flags = fcntl($stderr_read, F_GETFL, 0) or die("fcntl: $!");
-    fcntl($stderr_read, F_SETFL, $flags | O_NONBLOCK) or die("fcntl: $!\n");
+    # my $flags;
+    # $flags = fcntl($stdout_read, F_GETFL, 0) or die("fcntl: $!");
+    # fcntl($stdout_read, F_SETFL, $flags | O_NONBLOCK) or die("fcntl: $!\n");
+    # $flags = fcntl($stderr_read, F_GETFL, 0) or die("fcntl: $!");
+    # fcntl($stderr_read, F_SETFL, $flags | O_NONBLOCK) or die("fcntl: $!\n");
 
     my $has_stdout;
     my $has_stderr;
