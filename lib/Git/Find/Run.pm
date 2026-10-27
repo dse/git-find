@@ -93,8 +93,10 @@ sub run_cmd {
             my $data;
             my $bytes = sysread($stdout_read, $data, 4096);
             if (!defined $bytes) {
-                last if $!{EAGAIN}; # maybe more to read later
-                $err .= "  sysread stdout: $!\n";
+                # EAGAIN = more to read later (probably)
+                if (!$!{EAGAIN}) {
+                    $err .= "  sysread stdout: $!\n";
+                }
             }
             if (!$bytes) {
                 if (!close($stdout_read)) {
@@ -121,8 +123,10 @@ sub run_cmd {
             my $data;
             my $bytes = sysread($stderr_read, $data, 4096);
             if (!defined $bytes) {
-                last if $!{EAGAIN}; # maybe more to read later
-                $err .= "  sysread stderr: $!\n";
+                # EAGAIN = more to read later (probably)
+                if (!$!{EAGAIN}) {
+                    $err .= "  sysread stderr: $!\n";
+                }
             }
             if (!$bytes) {
                 if (!close($stderr_read)) {
